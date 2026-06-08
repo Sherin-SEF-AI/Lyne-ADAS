@@ -1,0 +1,7 @@
+# Off-device conversion toolchain (Python 3.10+). Not needed to build or run the app.
+ultralytics>=8.3.0          # YOLOv8 export to INT8 tflite
+tensorflow>=2.16,<2.18      # TFLiteConverter
+onnx>=1.16                  # lane model intermediate
+onnx2tf>=1.22              # ONNX -> TF SavedModel -> TFLite
+numpy>=1.26
+pillow>=10.0

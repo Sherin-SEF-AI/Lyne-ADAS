@@ -1,0 +1,46 @@
+# GTSRB 43-class order (matches the trained classifier). SignClassifier parses:
+#   "stop" -> STOP ; contains "speed"/"limit" + a number -> that speed limit ; else -> ignored.
+# Non-speed classes deliberately avoid the words speed/limit/stop and digits so they map to NONE.
+speed_limit_20
+speed_limit_30
+speed_limit_50
+speed_limit_60
+speed_limit_70
+speed_limit_80
+end_restriction
+speed_limit_100
+speed_limit_120
+no_passing
+no_passing_heavy
+right_of_way
+priority_road
+yield
+stop
+no_vehicles
+no_heavy
+no_entry
+caution
+curve_left
+curve_right
+double_curve
+bumpy_road
+slippery_road
+road_narrows
+road_work
+traffic_signals
+pedestrians
+children
+bicycles
+ice_snow
+wild_animals
+end_all_restrictions
+turn_right
+turn_left
+ahead_only
+straight_or_right
+straight_or_left
+keep_right
+keep_left
+roundabout
+end_no_passing
+end_no_passing_heavy

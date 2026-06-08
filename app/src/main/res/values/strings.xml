@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Lyne ADAS</string>
+    <string name="perm_rationale_camera">Lyne ADAS needs the rear camera to detect vehicles, pedestrians and lane lines. This is the core safety function and cannot be disabled.</string>
+    <string name="perm_rationale_location">Location is used to read GPS speed for headway timing and overspeed warnings. Without it, speed-based warnings are degraded.</string>
+</resources>

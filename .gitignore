@@ -1,0 +1,28 @@
+*.iml
+.gradle/
+.kotlin/
+.idea/
+/local.properties
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+app/build/
+build/
+
+# tooling / editor / agent dirs
+.claude/
+
+# transient scaffolding + capture artifacts
+.build*.log
+.*.log
+.verify.*
+.async.png
+.seg*.png
+.twinlite*
+.train_gtsrb*
+.export_models*
+.setup_py*
+.install_toolchain*
+calibration_image_sample_data_*.npy
