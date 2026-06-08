@@ -23,8 +23,14 @@ class DriveSession(private val startedAtMs: Long) {
     private var lastTickMs = startedAtMs
     private val counts = HashMap<AlertType, Int>()
 
-    /** @param speedMps current GPS speed (NaN if unknown). */
-    fun tick(nowMs: Long, speedMps: Float, events: List<AdasEvent>) {
+    // Route polyline (downsampled) + event timeline for trip history.
+    private val lats = ArrayList<Double>()
+    private val lons = ArrayList<Double>()
+    private var lastPointMs = 0L
+    private val eventLog = ArrayList<TripEvent>()
+
+    /** @param speedMps GPS speed (NaN if unknown). @param lat/lon NaN if no fix. */
+    fun tick(nowMs: Long, speedMps: Float, lat: Double, lon: Double, events: List<AdasEvent>) {
         val dt = ((nowMs - lastTickMs).coerceAtLeast(0)) / 1000.0
         lastTickMs = nowMs
         if (!speedMps.isNaN()) {
@@ -32,7 +38,14 @@ class DriveSession(private val startedAtMs: Long) {
             val kph = speedMps * 3.6f
             if (kph > maxSpeedKph) maxSpeedKph = kph
         }
-        for (e in events) counts[e.type] = (counts[e.type] ?: 0) + 1
+        // Downsample the route to ~1 point/2s to keep trips small.
+        if (!lat.isNaN() && !lon.isNaN() && nowMs - lastPointMs >= 2000L) {
+            lats.add(lat); lons.add(lon); lastPointMs = nowMs
+        }
+        for (e in events) {
+            counts[e.type] = (counts[e.type] ?: 0) + 1
+            if (eventLog.size < 500) eventLog.add(TripEvent(e.timestampMs, e.type.name, e.severity.name, e.message))
+        }
     }
 
     fun snapshot(nowMs: Long): SessionStats = SessionStats(
@@ -42,5 +55,20 @@ class DriveSession(private val startedAtMs: Long) {
         distanceKm = (distanceM / 1000.0).toFloat(),
         alertCounts = HashMap(counts),
         totalAlerts = counts.values.sum(),
+    )
+
+    val hasData: Boolean get() = eventLog.isNotEmpty() || lats.size > 1 || distanceM > 50.0
+
+    fun toTrip(nowMs: Long): Trip = Trip(
+        id = startedAtMs,
+        startedAtMs = startedAtMs,
+        durationMs = nowMs - startedAtMs,
+        distanceKm = (distanceM / 1000.0).toFloat(),
+        maxSpeedKph = maxSpeedKph,
+        totalAlerts = counts.values.sum(),
+        alertCounts = counts.mapKeys { it.key.name },
+        lats = lats.toDoubleArray(),
+        lons = lons.toDoubleArray(),
+        events = ArrayList(eventLog),
     )
 }

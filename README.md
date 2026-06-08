@@ -40,7 +40,10 @@ Every model runs **on the device**. Nothing leaves the phone. It works offline, 
 | 🚶 | **Vulnerable Road Users** | Detects pedestrians, two-wheelers, cyclists, and auto-rickshaws in the ego path |
 | 📏 | **Headway Monitor** | Continuous following-distance readout in seconds, with a tailgating warning |
 | 🛑 | **Traffic Sign Recognition** | Speed-limit and stop-sign recognition, compared against GPS speed for overspeed alerts |
-| 🎚️ | **Self-Tuning Tiers** | A boot-time probe benchmarks the device and picks input size, model variant, cadence, and backend |
+| 🎯 | **Multi-Object Tracking** | IoU tracker gives every vehicle a stable ID, so TTC and closing speed are smooth, not jittery |
+| 🎚️ | **Adaptive Sensitivity** | Warning thresholds shift with GPS speed: gentle in the city, earlier on the highway |
+| 🗺️ | **Trip History + Route Map** | Every drive is saved with a route map, stats, and an event timeline |
+| 🎛️ | **Self-Tuning Tiers** | A boot-time probe benchmarks the device and picks input size, model variant, cadence, and backend |
 | 🌗 | **Auto Day / Night HUD** | Ambient-light sensor switches between a daylight and a low-glare night theme |
 | 📊 | **Drive Sessions** | Live trip stats plus an event log exportable as a portable JSON sidecar |
 

@@ -51,6 +51,7 @@ class AdasController(
     val state: StateFlow<AdasUiState> = _state.asStateFlow()
 
     private val settings = SettingsStore(context)
+    private val tripStore = TripStore(context)
     private var config: AdasConfig = settings.loadConfig()
 
     private val tierSelector = TierSelector(context)
@@ -162,7 +163,7 @@ class AdasController(
             nowMs = nowMs,
         )
         alerts.onResult(result, nowMs)
-        session?.tick(nowMs, location.speedMps, result.events)
+        session?.tick(nowMs, location.speedMps, location.latitude, location.longitude, result.events)
         if (result.events.isNotEmpty()) {
             rovix?.let { w -> result.events.forEach(w::record) }
             recorder?.onEvent()
@@ -291,6 +292,9 @@ class AdasController(
     fun stop() {
         if (!started) return
         started = false
+        // Persist the finished drive for trip history.
+        session?.let { s -> if (s.hasData) runCatching { tripStore.save(s.toTrip(System.currentTimeMillis())) } }
+        session = null
         camera.stop()
         thermal.stop()
         location.stop()
@@ -301,6 +305,9 @@ class AdasController(
         pool?.recycleAll()
         scheduler = null; analyzer = null; pool = null; detectors = null; fusion = null
     }
+
+    /** Past drives, newest first, for the trip-history screen. */
+    fun recentTrips(): List<Trip> = tripStore.list()
 
     fun release() {
         stop()

@@ -21,6 +21,7 @@ import com.lyne.adas.l1.ui.HudScreen
 import com.lyne.adas.l1.ui.OnboardingScreen
 import com.lyne.adas.l1.ui.SessionScreen
 import com.lyne.adas.l1.ui.SettingsScreen
+import com.lyne.adas.l1.ui.TripsScreen
 import com.lyne.adas.l1.ui.theme.LyneTheme
 
 class MainActivity : ComponentActivity() {
@@ -100,7 +101,12 @@ class MainActivity : ComponentActivity() {
                 Screen.SESSION -> SessionScreen(
                     state = state,
                     onExport = { controller.shareRovix() },
+                    onOpenTrips = { screen = Screen.TRIPS },
                     onClose = { screen = Screen.HUD },
+                )
+                Screen.TRIPS -> TripsScreen(
+                    trips = remember(screen) { controller.recentTrips() },
+                    onClose = { screen = Screen.SESSION },
                 )
             }
         }
@@ -127,5 +133,5 @@ class MainActivity : ComponentActivity() {
         permLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION))
     }
 
-    private enum class Screen { HUD, SETTINGS, CALIB, SESSION }
+    private enum class Screen { HUD, SETTINGS, CALIB, SESSION, TRIPS }
 }

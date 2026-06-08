@@ -17,7 +17,7 @@ class FusionEngine(
     private val config: AdasConfig,
     private val features: FeatureFlags,
 ) {
-    private val ttc = TtcEstimator()
+    private val tracker = ObjectTracker()
     private val ldw = LaneDepartureLogic(config)
     private val overspeed = OverspeedMonitor(config)
     private val debounce = HashMap<AlertType, Int>()
@@ -32,7 +32,21 @@ class FusionEngine(
     ): FusionResult {
         val speedKph = if (speedMps.isNaN()) Float.NaN else speedMps * 3.6f
 
-        // --- Lead vehicle / FCW / headway ---
+        // Multi-object tracking: stable IDs so per-object TTC/closing-speed stop jittering.
+        val tracks = tracker.update(p.detections, p.timestampNs)
+
+        // Adaptive sensitivity: warn earlier at higher speed (longer stopping distance).
+        var ttcCaution = config.ttcCautionSec
+        var ttcCritical = config.ttcCriticalSec
+        var hwWarn = config.headwayWarnSec
+        var hwCrit = config.headwayCriticalSec
+        if (!speedKph.isNaN()) {
+            val add = when { speedKph > 70f -> 0.6f; speedKph > 40f -> 0.3f; else -> 0f }
+            ttcCaution += add; ttcCritical += add * 0.5f
+            if (speedKph > 70f) hwWarn += 0.3f
+        }
+
+        // --- Lead vehicle / FCW / headway (per tracked vehicle) ---
         var leadBox: BBox? = null
         var leadDist: Float? = null
         var leadConf: Float? = null
@@ -41,28 +55,38 @@ class FusionEngine(
         var fcwSev = Severity.NONE
         var headwaySev = Severity.NONE
 
-        val lead = p.detections
+        val lead = tracks
             .filter { it.cls.isVehicle && PathIntrusion.inEgoPath(it.box, config) }
             .maxByOrNull { it.box.area }
 
         if (lead != null && (features.fcw || features.headway)) {
-            val est = DistanceEstimator.estimate(lead, intrinsics, distanceScale)
-            leadBox = lead.box; leadDist = est.distanceM; leadConf = est.confidence
-            val t = ttc.update(lead.box.width, p.timestampNs)
-            ttcSec = if (t.isNaN()) null else t
+            val est = DistanceEstimator.estimate(Detection(lead.cls, lead.score, lead.box), intrinsics, distanceScale)
+            leadBox = lead.box; leadDist = est.distanceM
+
+            // Two independent TTC estimates, fused: box-scale growth and distance closing-rate.
+            val scaleT = lead.scaleTtc()
+            val distT = lead.updateDistance(est.distanceM, p.timestampNs)
+            val (fused, ttcConf) = fuseTtc(scaleT, distT)
+            ttcSec = if (fused.isNaN()) null else fused
+            leadConf = (est.confidence * (0.5f + 0.5f * ttcConf)).coerceIn(0f, 1f)
+
             val hw = HeadwayMonitor.headwaySec(est.distanceM, speedMps)
             headwaySec = if (hw.isNaN()) null else hw
 
             if (features.fcw && ttcSec != null) {
+                val hardOk = leadConf!! >= config.minDistanceConfidence
                 fcwSev = when {
-                    ttcSec < config.ttcCriticalSec -> if (est.confidence >= config.minDistanceConfidence) Severity.CRITICAL else Severity.CAUTION
-                    ttcSec < config.ttcCautionSec -> Severity.CAUTION
+                    ttcSec < ttcCritical -> if (hardOk) Severity.CRITICAL else Severity.CAUTION
+                    ttcSec < ttcCaution -> Severity.CAUTION
                     else -> Severity.NONE
                 }
             }
-            if (features.headway) headwaySev = HeadwayMonitor.severity(hw, config)
-        } else {
-            ttc.reset()
+            if (features.headway) headwaySev = when {
+                hw.isNaN() -> Severity.NONE
+                hw < hwCrit -> Severity.CRITICAL
+                hw < hwWarn -> Severity.CAUTION
+                else -> Severity.NONE
+            }
         }
 
         // --- VRU ---
@@ -81,7 +105,7 @@ class FusionEngine(
         var ldwSev = Severity.NONE
         var laneOffset: Float? = null
         if (features.ldw) {
-            val r = ldw.update(p.lane, yawRate, p.timestampNs)
+            val r = ldw.update(p.lane, yawRate, laneCurvature(p.lane), p.timestampNs)
             ldwSev = r.severity
             laneOffset = if (p.lane.confidence >= config.ldwMinLaneConfidence) r.offset else null
         }
@@ -164,5 +188,34 @@ class FusionEngine(
 
     private fun fmt(v: Float?): String = if (v == null || v.isNaN()) "--" else String.format("%.1f", v)
 
-    fun reset() { ttc.reset(); debounce.clear() }
+    /** Fuse scale-based and distance-based TTC. Agreement => take the sooner one at high confidence. */
+    private fun fuseTtc(scale: Float, dist: Float): Pair<Float, Float> {
+        val s = scale; val d = dist
+        return when {
+            s.isNaN() && d.isNaN() -> Float.NaN to 0f
+            s.isNaN() -> d to 0.55f
+            d.isNaN() -> s to 0.7f
+            else -> {
+                val hi = maxOf(s, d); val lo = maxOf(minOf(s, d), 0.01f)
+                if (hi / lo < 1.6f) minOf(s, d) to 1.0f else s to 0.6f
+            }
+        }
+    }
+
+    /** Lane centre shift from far to near rows, a proxy for road curvature (normalized units). */
+    private fun laneCurvature(lane: com.lyne.adas.l1.inference.LaneResult): Float {
+        val l = lane.leftLaneX ?: return 0f
+        val r = lane.rightLaneX ?: return 0f
+        var farC = Float.NaN; var nearC = Float.NaN
+        for (i in lane.rows.indices) {
+            val lx = l.getOrNull(i); val rx = r.getOrNull(i)
+            if (lx == null || rx == null || lx.isNaN() || rx.isNaN()) continue
+            val c = (lx + rx) * 0.5f
+            if (farC.isNaN()) farC = c
+            nearC = c
+        }
+        return if (!farC.isNaN() && !nearC.isNaN()) farC - nearC else 0f
+    }
+
+    fun reset() { tracker.reset(); debounce.clear() }
 }

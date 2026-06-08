@@ -16,7 +16,12 @@ class LaneDepartureLogic(private val config: AdasConfig) {
     private var lastOffset = Float.NaN
     private var lastTimeNs = 0L
 
-    fun update(lane: LaneResult, yawRate: Float, timestampNs: Long): LaneDepartureResult {
+    /**
+     * @param curvature how much the lane/road centre shifts from near to far rows (normalized).
+     * On a bend the offset naturally grows, so we relax the warn threshold proportionally to avoid
+     * false departures through curves.
+     */
+    fun update(lane: LaneResult, yawRate: Float, curvature: Float, timestampNs: Long): LaneDepartureResult {
         if (lane.confidence < config.ldwMinLaneConfidence) {
             lastOffset = Float.NaN
             return LaneDepartureResult(Severity.NONE, lane.centerOffset, suppressed = false)
@@ -31,12 +36,17 @@ class LaneDepartureLogic(private val config: AdasConfig) {
         lastOffset = offset
         lastTimeNs = timestampNs
 
+        // Curve-aware thresholds: a bend widens the tolerance band.
+        val curveSlack = (abs(curvature) * CURVE_SLACK_GAIN).coerceIn(0f, 0.5f)
+        val warnFrac = config.ldwOffsetWarnFrac + curveSlack
+        val critFrac = 1.0f + curveSlack
+
         val deliberate = abs(yawRate) > YAW_DELIBERATE_RPS || abs(lateralVel) > config.ldwManeuverLateralMps
-        val breach = abs(offset) >= config.ldwOffsetWarnFrac
+        val breach = abs(offset) >= warnFrac
 
         return when {
             breach && deliberate -> LaneDepartureResult(Severity.NONE, offset, suppressed = true)
-            abs(offset) >= 1.0f -> LaneDepartureResult(Severity.CRITICAL, offset, suppressed = false)
+            abs(offset) >= critFrac -> LaneDepartureResult(Severity.CRITICAL, offset, suppressed = false)
             breach -> LaneDepartureResult(Severity.CAUTION, offset, suppressed = false)
             else -> LaneDepartureResult(Severity.NONE, offset, suppressed = false)
         }
@@ -45,5 +55,6 @@ class LaneDepartureLogic(private val config: AdasConfig) {
     companion object {
         // ~0.35 rad/s yaw is a clearly intentional turn, not a drift.
         private const val YAW_DELIBERATE_RPS = 0.35f
+        private const val CURVE_SLACK_GAIN = 1.2f
     }
 }

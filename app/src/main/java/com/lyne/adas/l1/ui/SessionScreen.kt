@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.sp
 import com.lyne.adas.l1.pipeline.AdasUiState
 
 @Composable
-fun SessionScreen(state: AdasUiState, onExport: () -> Unit, onClose: () -> Unit) {
+fun SessionScreen(state: AdasUiState, onExport: () -> Unit, onOpenTrips: () -> Unit, onClose: () -> Unit) {
     val p = palette()
     val s = state.session
     Column(Modifier.fillMaxSize().background(p.background).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -62,7 +62,10 @@ fun SessionScreen(state: AdasUiState, onExport: () -> Unit, onClose: () -> Unit)
             }
         }
 
-        PillButton("EXPORT ROVIX JSON", p.accent, onExport)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton("TRIP HISTORY", p.text, onOpenTrips)
+            PillButton("EXPORT ROVIX JSON", p.accent, onExport)
+        }
     }
 }
 

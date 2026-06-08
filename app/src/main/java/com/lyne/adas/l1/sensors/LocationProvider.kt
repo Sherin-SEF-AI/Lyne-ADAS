@@ -24,11 +24,16 @@ class LocationProvider(private val context: Context) {
     val speedKph: Float get() = if (speedMps.isNaN()) Float.NaN else speedMps * 3.6f
     @Volatile var hasFix: Boolean = false
         private set
+    @Volatile var latitude: Double = Double.NaN
+        private set
+    @Volatile var longitude: Double = Double.NaN
+        private set
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             val loc = result.lastLocation ?: return
             speedMps = if (loc.hasSpeed()) loc.speed else speedMps
+            latitude = loc.latitude; longitude = loc.longitude
             hasFix = true
         }
     }
