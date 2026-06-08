@@ -1,4 +1,4 @@
-# CLAUDE.md - Lyne ADAS architecture & invariants
+# Lyne ADAS - Architecture & Invariants
 
 On-device Android ADAS L1 (warning-only). One APK, self-tunes across all device tiers. Read this
 before changing the pipeline so the invariants below stay intact.

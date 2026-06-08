@@ -12,8 +12,8 @@ import com.lyne.adas.l1.fusion.Severity
 import com.lyne.adas.l1.logging.Log
 
 /**
- * Audio + haptic alerting. Tones come from [ToneGenerator] (asset-free, reliable across devices —
- * see CLAUDE.md for why this over SoundPool). Output is rate-limited per severity so warnings are
+ * Audio + haptic alerting. Tones come from [ToneGenerator] (asset-free, reliable across devices,
+ * see ARCHITECTURE.md for why this over SoundPool). Output is rate-limited per severity so warnings are
  * assertive without becoming a continuous nuisance, and only escalate on CAUTION/CRITICAL.
  */
 class AlertManager(context: Context) {

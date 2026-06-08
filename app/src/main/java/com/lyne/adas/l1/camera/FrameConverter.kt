@@ -15,7 +15,7 @@ import java.nio.ByteBuffer
  * display image, which is what the HUD overlay assumes.
  *
  * We use RGBA_8888 analysis output instead of manual YUV_420_888 conversion: fewer per-frame ops,
- * no native YUV code, and robust across OEM camera HALs (see CLAUDE.md for the rationale).
+ * no native YUV code, and robust across OEM camera HALs (see ARCHITECTURE.md for the rationale).
  *
  * All scratch (source bitmap, row buffer, canvas, matrix) is allocated once and reused.
  */
