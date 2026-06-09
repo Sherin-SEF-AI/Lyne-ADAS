@@ -120,8 +120,10 @@ class AdasController(
             previewView = preview,
             analyzer = analyzer!!,
             analysisTarget = target,
+            videoCapture = recorder?.buildUseCase(),
             onReady = { pushBase(resolved.tier, resolved.probeSummary()) },
             onError = { t -> _state.value = _state.value.copy(error = t.message ?: "camera error", cameraReady = false) },
+            onDashcamBound = { ok -> if (ok) recorder?.onBound() else recorder?.onBindFailed() },
         )
         pushBase(resolved.tier, resolved.probeSummary())
         Log.i(TAG, "started tier=${resolved.tier} obj=${detectors?.obj?.name} lane=${detectors?.lane?.name} sign=${detectors?.sign?.name}")
@@ -134,7 +136,7 @@ class AdasController(
         detectors = dets
         perf.backend = dets.obj.backend
         fusion = FusionEngine(config, profile.features)
-        recorder = RingBufferRecorder(context, config, profile).also { it.start() }
+        recorder = RingBufferRecorder(context, config, profile)
         rovix = if (config.emitRovixSidecar)
             com.lyne.adas.l1.logging.RovixEventWriter(context, resolved.tier, dets.obj.backend) else null
 
@@ -164,9 +166,9 @@ class AdasController(
         )
         alerts.onResult(result, nowMs)
         session?.tick(nowMs, location.speedMps, location.latitude, location.longitude, result.events)
+        if (result.topSeverity == com.lyne.adas.l1.fusion.Severity.CRITICAL) recorder?.onEvent()
         if (result.events.isNotEmpty()) {
             rovix?.let { w -> result.events.forEach(w::record) }
-            recorder?.onEvent()
             synchronized(eventRing) {
                 for (e in result.events) { eventRing.addLast(e); if (eventRing.size > 100) eventRing.pollFirst() }
                 recentSnapshot = eventRing.toList()
@@ -271,6 +273,29 @@ class AdasController(
         }
     }
 
+    /** Dashcam clips saved on disk (newest first), independent of recorder lifecycle. */
+    fun listClips(): List<File> {
+        val dir = File(context.getExternalFilesDir(null), "dashcam")
+        return (dir.listFiles { f -> f.name.startsWith("clip_") && f.extension == "mp4" } ?: emptyArray())
+            .sortedByDescending { it.lastModified() }
+    }
+
+    fun playClip(file: File) = openClip(file, Intent.ACTION_VIEW, "Play clip")
+    fun shareClip(file: File) = openClip(file, Intent.ACTION_SEND, "Share clip")
+
+    private fun openClip(file: File, action: String, title: String) {
+        if (!file.exists()) return
+        try {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val intent = Intent(action).apply {
+                if (action == Intent.ACTION_SEND) { type = "video/mp4"; putExtra(Intent.EXTRA_STREAM, uri) }
+                else { setDataAndType(uri, "video/mp4") }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (t: Throwable) { Log.w(TAG, "open clip failed", t) }
+    }
+
     fun setFovOverride(deg: Float?) {
         calibration.fovOverrideDeg = deg
         effIntrinsics = calibration.effectiveIntrinsics(baseIntrinsics)
@@ -295,6 +320,7 @@ class AdasController(
         // Persist the finished drive for trip history.
         session?.let { s -> if (s.hasData) runCatching { tripStore.save(s.toTrip(System.currentTimeMillis())) } }
         session = null
+        recorder?.stop(); recorder = null
         camera.stop()
         thermal.stop()
         location.stop()

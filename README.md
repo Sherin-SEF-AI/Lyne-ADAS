@@ -43,6 +43,7 @@ Every model runs **on the device**. Nothing leaves the phone. It works offline, 
 | 🎯 | **Multi-Object Tracking** | IoU tracker gives every vehicle a stable ID, so TTC and closing speed are smooth, not jittery |
 | 🎚️ | **Adaptive Sensitivity** | Warning thresholds shift with GPS speed: gentle in the city, earlier on the highway |
 | 🗺️ | **Trip History + Route Map** | Every drive is saved with a route map, stats, and an event timeline |
+| 🎥 | **Event Dashcam** | A rolling ring buffer auto-saves a clip around every critical event, with an in-app player and share |
 | 🎛️ | **Self-Tuning Tiers** | A boot-time probe benchmarks the device and picks input size, model variant, cadence, and backend |
 | 🌗 | **Auto Day / Night HUD** | Ambient-light sensor switches between a daylight and a low-glare night theme |
 | 📊 | **Drive Sessions** | Live trip stats plus an event log exportable as a portable JSON sidecar |
@@ -122,7 +123,7 @@ Monocular distance depends on field of view. Lyne reads camera intrinsics from t
 ## 🗺️ Roadmap
 
 - [ ] India Driving Dataset (IDD) fine-tuned segmentation weights
-- [ ] Dashcam event clip recording (ring buffer)
+- [x] Dashcam event clip recording (ring buffer)
 - [ ] Cyclist and animal classes for rural roads
 - [ ] Bluetooth auto-start on drive detection
 - [ ] CI build and instrumented tests

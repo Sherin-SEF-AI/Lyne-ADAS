@@ -8,6 +8,8 @@ import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.Recorder
+import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -32,8 +34,10 @@ class CameraController(
         previewView: PreviewView?,
         analyzer: ImageAnalysis.Analyzer,
         analysisTarget: Size = Size(640, 480),
+        videoCapture: VideoCapture<Recorder>? = null,
         onReady: () -> Unit = {},
         onError: (Throwable) -> Unit = {},
+        onDashcamBound: (Boolean) -> Unit = {},
     ) {
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
@@ -57,10 +61,28 @@ class CameraController(
                     .build()
                     .also { it.setAnalyzer(analyzerExecutor, analyzer) }
 
+                val selector = CameraSelector.DEFAULT_BACK_CAMERA
                 cp.unbindAll()
-                cp.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-                Log.i(TAG, "camera bound; analysis target=$analysisTarget")
+                // Try binding the optional dashcam VideoCapture as a third use case; not all devices
+                // support Preview + Analysis + Video together, so fall back cleanly without it.
+                var dashcamBound = false
+                if (videoCapture != null) {
+                    try {
+                        cp.bindToLifecycle(lifecycleOwner, selector, preview, analysis, videoCapture)
+                        dashcamBound = true
+                        Log.i(TAG, "camera bound WITH dashcam; analysis target=$analysisTarget")
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "3-use-case bind failed; retrying without dashcam", t)
+                        cp.unbindAll()
+                        cp.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+                        Log.i(TAG, "camera bound (no dashcam); analysis target=$analysisTarget")
+                    }
+                } else {
+                    cp.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+                    Log.i(TAG, "camera bound; analysis target=$analysisTarget")
+                }
                 onReady()
+                onDashcamBound(dashcamBound)
             } catch (t: Throwable) {
                 Log.e(TAG, "camera start failed", t)
                 onError(t)

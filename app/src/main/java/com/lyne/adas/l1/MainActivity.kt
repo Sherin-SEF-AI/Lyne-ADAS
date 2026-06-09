@@ -19,6 +19,7 @@ import com.lyne.adas.l1.pipeline.AdasController
 import com.lyne.adas.l1.ui.CalibrationScreen
 import com.lyne.adas.l1.ui.HudScreen
 import com.lyne.adas.l1.ui.OnboardingScreen
+import com.lyne.adas.l1.ui.ClipsScreen
 import com.lyne.adas.l1.ui.SessionScreen
 import com.lyne.adas.l1.ui.SettingsScreen
 import com.lyne.adas.l1.ui.TripsScreen
@@ -102,10 +103,17 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onExport = { controller.shareRovix() },
                     onOpenTrips = { screen = Screen.TRIPS },
+                    onOpenClips = { screen = Screen.CLIPS },
                     onClose = { screen = Screen.HUD },
                 )
                 Screen.TRIPS -> TripsScreen(
                     trips = remember(screen) { controller.recentTrips() },
+                    onClose = { screen = Screen.SESSION },
+                )
+                Screen.CLIPS -> ClipsScreen(
+                    clips = remember(screen) { controller.listClips() },
+                    onPlay = { controller.playClip(it) },
+                    onShare = { controller.shareClip(it) },
                     onClose = { screen = Screen.SESSION },
                 )
             }
@@ -133,5 +141,5 @@ class MainActivity : ComponentActivity() {
         permLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION))
     }
 
-    private enum class Screen { HUD, SETTINGS, CALIB, SESSION, TRIPS }
+    private enum class Screen { HUD, SETTINGS, CALIB, SESSION, TRIPS, CLIPS }
 }
