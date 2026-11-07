@@ -27,6 +27,8 @@ class FrameAnalyzer(
 
     override fun analyze(image: ImageProxy) {
         val id = frameId++
+        // Sensor exposure timestamp: true inter-frame dt for rate estimates (not processing time).
+        val ts = image.imageInfo.timestamp.takeIf { it > 0L } ?: System.nanoTime()
         val dst = pool.acquire()
         if (dst == null) {
             perf.frameDropped()
@@ -44,7 +46,7 @@ class FrameAnalyzer(
             image.close()
         }
 
-        val frame = CameraFrame(dst, timestampNs = System.nanoTime(), rotationDegrees = 0, frameId = id)
+        val frame = CameraFrame(dst, timestampNs = ts, rotationDegrees = 0, frameId = id)
         if (!scheduler.submit(frame)) {
             pool.release(dst) // dropped by scheduler; return buffer immediately
         }

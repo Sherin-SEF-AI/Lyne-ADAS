@@ -22,6 +22,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,7 +40,6 @@ fun HudScreen(
     state: AdasUiState,
     previewView: View,
     onToggleMute: () -> Unit,
-    onToggleInject: () -> Unit,
     onOpenCalibration: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenSession: () -> Unit,
@@ -56,18 +61,16 @@ fun HudScreen(
 
         HudOverlay(result = state.fusion, frameAspect = state.frameAspect, palette = p, phase = phase, modifier = Modifier.fillMaxSize())
 
+        // Soft vignette so the HUD stays readable on bright scenes without hiding the road.
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.35f), 0.22f to Color.Transparent, 0.8f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.35f))))
+
         if (top == Severity.CRITICAL) {
             Box(Modifier.fillMaxSize().border(7.dp, p.critical.copy(alpha = pulse)))
         }
 
         // Top bar.
-        Row(
-            Modifier.fillMaxWidth().align(Alignment.TopStart).padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            StatusStrip(state)
-            if (state.showPerf) state.perf?.let { PerfPanel(it) }
-        }
+        Box(Modifier.align(Alignment.TopStart).padding(8.dp)) { StatusStrip(state) }
+        if (state.showPerf) Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) { state.perf?.let { PerfPanel(it) } }
 
         // Gauges: TTC + headway on the left, speed on the right.
         Column(
@@ -81,16 +84,18 @@ fun HudScreen(
             SpeedGauge(state.fusion?.speedKph, state.fusion?.speedLimitKph, state.fusion?.overspeed ?: Severity.NONE)
         }
 
-        // Master alert banner.
+        // Master alert banner, else the lead-vehicle readout.
         val msg = state.fusion?.topMessage
-        if (top != Severity.NONE && msg != null) {
-            Box(
-                Modifier.align(Alignment.TopCenter).padding(top = 54.dp)
-                    .background(bannerColor, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 18.dp, vertical = 7.dp),
-            ) {
-                Text(msg, color = p.background, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            }
+        Box(Modifier.align(Alignment.TopCenter).padding(top = 10.dp)) {
+            if (top != Severity.NONE && msg != null) {
+                Row(
+                    Modifier.background(bannerColor, RoundedCornerShape(14.dp)).padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Warning, null, tint = p.background, modifier = Modifier.size(26.dp))
+                    Text("  $msg", color = p.background, fontWeight = FontWeight.Black, fontSize = if (top == Severity.CRITICAL) 26.sp else 20.sp)
+                }
+            } else LeadCard(state.fusion)
         }
 
         // Bottom action bar.
@@ -98,7 +103,6 @@ fun HudScreen(
             state = state,
             modifier = Modifier.align(Alignment.BottomCenter),
             onToggleMute = onToggleMute,
-            onToggleInject = onToggleInject,
             onOpenCalibration = onOpenCalibration,
             onOpenSettings = onOpenSettings,
             onOpenSession = onOpenSession,
@@ -108,8 +112,9 @@ fun HudScreen(
         if (!state.cameraReady) {
             Box(Modifier.fillMaxSize().background(p.background), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("LYNE ADAS", color = p.text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Text(state.error ?: "INITIALIZING…", color = p.textDim, fontSize = 13.sp)
+                    Text("LYNE", color = p.text, fontSize = 34.sp, fontWeight = FontWeight.Black)
+                    Text("driver assistance", color = p.accent, fontSize = 12.sp)
+                    Text(state.error ?: "Starting camera and models…", color = p.textDim, fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
                 }
             }
         }

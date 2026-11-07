@@ -74,10 +74,6 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     previewView = previewView,
                     onToggleMute = { controller.toggleMute() },
-                    onToggleInject = {
-                        config = config.copy(debugInjectSynthetic = !config.debugInjectSynthetic)
-                        controller.applyConfig(config)
-                    },
                     onOpenCalibration = { screen = Screen.CALIB },
                     onOpenSettings = { screen = Screen.SETTINGS },
                     onOpenSession = { screen = Screen.SESSION },
@@ -91,12 +87,16 @@ class MainActivity : ComponentActivity() {
                     onSetTier = { controller.setTierOverride(it) },
                     onSetDayNight = { controller.setDayNightMode(it) },
                     onTogglePerf = { controller.togglePerf() },
+                    onShareAccuracyLog = { controller.shareAccuracyLog() },
                     onClose = { screen = Screen.HUD },
                 )
                 Screen.CALIB -> CalibrationScreen(
                     state = state,
                     onSetFov = { controller.setFovOverride(it) },
                     onSetScale = { controller.setDistanceScale(it) },
+                    onSetHeight = { h, preset -> controller.setCameraHeight(h, preset) },
+                    onSetAutoCal = { controller.setAutoCal(it) },
+                    onResetAutoCal = { controller.resetAutoCal() },
                     onClose = { screen = Screen.HUD },
                 )
                 Screen.SESSION -> SessionScreen(

@@ -8,6 +8,9 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.LifecycleOwner
 import com.lyne.adas.l1.alerts.AlertManager
 import com.lyne.adas.l1.calibration.CalibrationStore
+import com.lyne.adas.l1.calibration.CameraGeometry
+import com.lyne.adas.l1.calibration.VehiclePreset
+import com.lyne.adas.l1.logging.AccuracyLogger
 import com.lyne.adas.l1.calibration.CameraIntrinsics
 import com.lyne.adas.l1.calibration.IntrinsicsReader
 import com.lyne.adas.l1.camera.CameraController
@@ -87,6 +90,12 @@ class AdasController(
     @Volatile private var baseIntrinsics: CameraIntrinsics = CameraIntrinsics.DEFAULT
     @Volatile private var effIntrinsics: CameraIntrinsics = CameraIntrinsics.DEFAULT
     @Volatile private var distanceScale: Float = 1f
+    @Volatile private var cameraHeightM: Float = CameraGeometry.DEFAULT_CAMERA_HEIGHT_M
+    private var streamIntrinsics: CameraIntrinsics = CameraIntrinsics.DEFAULT
+    private var streamW = 0; private var streamH = 0
+    private var modelInputPx = 256
+    private var accuracyLog: AccuracyLogger? = null
+    private var lastUiPushMs = 0L
 
     fun start(preview: PreviewView?) {
         if (started) return
@@ -101,6 +110,11 @@ class AdasController(
         baseIntrinsics = IntrinsicsReader.read(context)
         effIntrinsics = calibration.effectiveIntrinsics(baseIntrinsics)
         distanceScale = calibration.distanceScale
+        cameraHeightM = calibration.cameraHeightM
+        streamW = 0; streamH = 0
+        modelInputPx = if (profile.useNanoModels) 256 else 320
+        motion.mount.seed(calibration.lastPitchRad, calibration.lastRollTan)
+        alerts.voiceEnabled = config.voiceAlerts
 
         buildPipeline()
 
@@ -135,7 +149,8 @@ class AdasController(
         val dets = DetectorProvider.build(context, config, profile)
         detectors = dets
         perf.backend = dets.obj.backend
-        fusion = FusionEngine(config, profile.features)
+        fusion = FusionEngine(config, profile.features, calibration.heightScale, calibration.autoCalEnabled)
+        accuracyLog = if (config.accuracyLog) AccuracyLogger(context) else null
         recorder = RingBufferRecorder(context, config, profile)
         rovix = if (config.emitRovixSidecar)
             com.lyne.adas.l1.logging.RovixEventWriter(context, resolved.tier, dets.obj.backend) else null
@@ -156,15 +171,18 @@ class AdasController(
     private fun onPerception(p: Perception) {
         val f = fusion ?: return
         val nowMs = System.currentTimeMillis()
+        val speed = location.speedMps
+        motion.longAccel = location.longAccel
         val result = f.update(
             p = p,
-            speedMps = location.speedMps,
-            yawRate = motion.yawRate,
-            intrinsics = effIntrinsics,
-            distanceScale = distanceScale,
+            speedMps = speed,
+            yawRate = if (motion.hasGyro) motion.yawRate else 0f,
+            geom = geometry(f),
+            inputPx = modelInputPx,
             nowMs = nowMs,
         )
         alerts.onResult(result, nowMs)
+        accuracyLog?.record(nowMs, result)
         session?.tick(nowMs, location.speedMps, location.latitude, location.longitude, result.events)
         if (result.topSeverity == com.lyne.adas.l1.fusion.Severity.CRITICAL) recorder?.onEvent()
         if (result.events.isNotEmpty()) {
@@ -175,6 +193,9 @@ class AdasController(
             }
         }
         perf.backend = p.objectBackend
+        // UI at <= ~20 Hz: recomposition costs more than inference on budget phones.
+        if (result.events.isEmpty() && nowMs - lastUiPushMs < 50L) return
+        lastUiPushMs = nowMs
         val a = analyzer
         val aspect = if (a != null && a.displayHeight > 0) a.displayWidth.toFloat() / a.displayHeight else _state.value.frameAspect
         _state.value = _state.value.copy(
@@ -184,6 +205,31 @@ class AdasController(
             session = session?.snapshot(nowMs),
             recentEvents = recentSnapshot,
             isNight = currentNight(),
+            mountPitchDeg = motion.mount.pitchRad.let { if (it.isNaN()) null else Math.toDegrees(it.toDouble()).toFloat() },
+            mountRollDeg = Math.toDegrees(kotlin.math.atan(motion.mount.rollTan.toDouble())).toFloat(),
+            mountConvergence = motion.mount.convergence,
+        )
+    }
+
+    /** Camera geometry for this frame: stream FoV, mount height x auto-cal, IMU pitch/roll. */
+    private fun geometry(f: FusionEngine): CameraGeometry {
+        val a = analyzer
+        if (a != null && (a.displayWidth != streamW || a.displayHeight != streamH) && a.displayWidth > 0) {
+            streamW = a.displayWidth; streamH = a.displayHeight
+            streamIntrinsics = effIntrinsics.forStream(streamW, streamH)
+            Log.i(TAG, "stream ${streamW}x$streamH hFov=${streamIntrinsics.horizontalFovDeg} vFov=${streamIntrinsics.verticalFovDeg}")
+        }
+        val m = motion.mount
+        val pitch = if (m.pitchRad.isNaN()) DEFAULT_PITCH_RAD else m.pitchRad.coerceIn(-0.35f, 0.35f)
+        val pitchSigma = if (m.pitchRad.isNaN()) 0.05f else m.pitchSigma()
+        return CameraGeometry(
+            hFovDeg = streamIntrinsics.horizontalFovDeg,
+            vFovDeg = streamIntrinsics.verticalFovDeg,
+            cameraHeightM = cameraHeightM * f.autoCal.scale,
+            pitchRad = pitch,
+            rollTan = m.rollTan.coerceIn(-0.2f, 0.2f),
+            distanceScale = distanceScale,
+            pitchSigmaRad = pitchSigma,
         )
     }
 
@@ -215,6 +261,10 @@ class AdasController(
             dayNightMode = dayNightMode,
             sensitivity = settings.sensitivity,
             showPerf = config.showPerfOverlay,
+            cameraHeightM = cameraHeightM,
+            vehiclePreset = calibration.vehiclePreset,
+            autoCalEnabled = calibration.autoCalEnabled,
+            distanceScale = distanceScale,
         )
     }
 
@@ -299,13 +349,48 @@ class AdasController(
     fun setFovOverride(deg: Float?) {
         calibration.fovOverrideDeg = deg
         effIntrinsics = calibration.effectiveIntrinsics(baseIntrinsics)
+        streamW = 0; streamH = 0 // force stream-FoV recompute on the next frame
         _state.value = _state.value.copy(intrinsics = effIntrinsics, calibrated = calibration.isCalibrated)
     }
 
-    fun setDistanceScale(scale: Float) {
-        calibration.distanceScale = scale
+    fun setCameraHeight(m: Float, preset: VehiclePreset?) {
+        calibration.cameraHeightM = m
+        calibration.vehiclePreset = preset
+        cameraHeightM = calibration.cameraHeightM
+        _state.value = _state.value.copy(cameraHeightM = cameraHeightM, vehiclePreset = preset, calibrated = calibration.isCalibrated)
+    }
+
+    fun setAutoCal(enabled: Boolean) {
+        calibration.autoCalEnabled = enabled
+        _state.value = _state.value.copy(autoCalEnabled = enabled)
+        restart()
+    }
+
+    fun resetAutoCal() {
+        calibration.resetAutoCal()
+        restart()
+    }
+
+    /** Share the per-frame lead CSV, if accuracy logging produced one. */
+    fun shareAccuracyLog() {
+        val dir = File(context.getExternalFilesDir(null), "accuracy")
+        val file = dir.listFiles { f -> f.extension == "csv" }?.maxByOrNull { it.lastModified() } ?: return
+        try {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Export accuracy log").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (t: Throwable) { Log.w(TAG, "share csv failed", t) }
+    }
+
+    /** Multiplies the current manual distance correction by [factor]; 1.0 resets it. */
+    fun setDistanceScale(factor: Float) {
+        calibration.distanceScale = if (factor == 1.0f) 1.0f else calibration.distanceScale * factor
         distanceScale = calibration.distanceScale
-        _state.value = _state.value.copy(calibrated = calibration.isCalibrated)
+        _state.value = _state.value.copy(calibrated = calibration.isCalibrated, distanceScale = distanceScale)
     }
 
     private fun restart() {
@@ -320,6 +405,9 @@ class AdasController(
         // Persist the finished drive for trip history.
         session?.let { s -> if (s.hasData) runCatching { tripStore.save(s.toTrip(System.currentTimeMillis())) } }
         session = null
+        fusion?.let { f -> if (calibration.autoCalEnabled) calibration.heightScale = f.autoCal.scale }
+        motion.mount.pitchRad.takeIf { !it.isNaN() }?.let { calibration.lastPitchRad = it; calibration.lastRollTan = motion.mount.rollTan }
+        accuracyLog?.close(); accuracyLog = null
         recorder?.stop(); recorder = null
         camera.stop()
         thermal.stop()
@@ -350,7 +438,11 @@ class AdasController(
         }
     }
 
-    companion object { private const val TAG = "AdasController" }
+    companion object {
+        private const val TAG = "AdasController"
+        /** Typical windshield mount looks ~3 deg down until the IMU says otherwise. */
+        private const val DEFAULT_PITCH_RAD = 0.05f
+    }
 }
 
 private fun com.lyne.adas.l1.perf.ResolvedTier.probeSummary(): String =

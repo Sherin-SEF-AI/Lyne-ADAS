@@ -6,7 +6,11 @@ import android.hardware.camera2.CameraManager
 import com.lyne.adas.l1.logging.Log
 import kotlin.math.atan2
 
-/** Reads rear-camera intrinsics via Camera2 and derives field of view, with a safe fallback. */
+/**
+ * Reads rear-camera intrinsics via Camera2 and derives the field of view of the ACTIVE pixel array
+ * (SENSOR_INFO_PHYSICAL_SIZE covers the full pixel array, which can be wider than what the camera
+ * outputs). Falls back to a conservative default when the HAL does not report the values.
+ */
 object IntrinsicsReader {
     private const val TAG = "IntrinsicsReader"
 
@@ -19,14 +23,26 @@ object IntrinsicsReader {
             } ?: return CameraIntrinsics.DEFAULT
 
             val ch = cm.getCameraCharacteristics(id)
-            val focal = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull()
+            val focal = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.minOrNull()
             val sensor = ch.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
-            if (focal == null || sensor == null || focal <= 0f) return CameraIntrinsics.DEFAULT
+            if (focal == null || sensor == null || focal <= 0f || sensor.width <= 0f) return CameraIntrinsics.DEFAULT
 
-            val hFov = Math.toDegrees(2.0 * atan2((sensor.width / 2.0), focal.toDouble())).toFloat()
-            val vFov = Math.toDegrees(2.0 * atan2((sensor.height / 2.0), focal.toDouble())).toFloat()
-            CameraIntrinsics(hFov, vFov, focal, sensor.width, fromDevice = true)
-                .also { Log.i(TAG, "intrinsics from device: hFov=${it.horizontalFovDeg} f=${it.focalLengthMm}mm") }
+            var w = sensor.width.toDouble()
+            var h = sensor.height.toDouble()
+            val pixelArray = ch.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE)
+            val active = ch.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+            if (pixelArray != null && active != null && pixelArray.width > 0 && pixelArray.height > 0) {
+                w *= active.width().toDouble() / pixelArray.width
+                h *= active.height().toDouble() / pixelArray.height
+            }
+            val aspect = if (active != null && active.height() > 0) active.width().toFloat() / active.height() else (w / h).toFloat()
+
+            val hFov = Math.toDegrees(2.0 * atan2(w / 2.0, focal.toDouble())).toFloat()
+            val vFov = Math.toDegrees(2.0 * atan2(h / 2.0, focal.toDouble())).toFloat()
+            // Sanity: phone main cameras live roughly in 45..100 deg horizontal. Outside that the HAL lied.
+            if (hFov !in 40f..110f) return CameraIntrinsics.DEFAULT
+            CameraIntrinsics(hFov, vFov, focal, w.toFloat(), fromDevice = true, sensorAspect = aspect)
+                .also { Log.i(TAG, "intrinsics: hFov=${it.horizontalFovDeg} vFov=${it.verticalFovDeg} aspect=$aspect f=${focal}mm") }
         } catch (t: Throwable) {
             Log.w(TAG, "intrinsics read failed; using default", t)
             CameraIntrinsics.DEFAULT

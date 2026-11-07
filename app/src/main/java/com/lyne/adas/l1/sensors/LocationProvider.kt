@@ -19,7 +19,15 @@ import com.lyne.adas.l1.logging.Log
 class LocationProvider(private val context: Context) {
     private val client = LocationServices.getFusedLocationProviderClient(context)
 
-    @Volatile var speedMps: Float = Float.NaN
+    @Volatile private var rawSpeedMps: Float = Float.NaN
+    @Volatile private var lastFixMs = 0L
+
+    /** GPS speed, or NaN when unknown or stale (>3 s without a fix: tunnels, lost signal). */
+    val speedMps: Float
+        get() = if (android.os.SystemClock.elapsedRealtime() - lastFixMs > 3000L) Float.NaN else rawSpeedMps
+
+    /** Longitudinal acceleration from consecutive GPS speeds (m/s^2), NaN if unknown. */
+    @Volatile var longAccel: Float = Float.NaN
         private set
     val speedKph: Float get() = if (speedMps.isNaN()) Float.NaN else speedMps * 3.6f
     @Volatile var hasFix: Boolean = false
@@ -32,7 +40,13 @@ class LocationProvider(private val context: Context) {
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             val loc = result.lastLocation ?: return
-            speedMps = if (loc.hasSpeed()) loc.speed else speedMps
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (loc.hasSpeed()) {
+                val prev = rawSpeedMps; val dt = (now - lastFixMs) / 1000f
+                longAccel = if (!prev.isNaN() && dt in 0.2f..3f) (loc.speed - prev) / dt else Float.NaN
+                rawSpeedMps = loc.speed
+                lastFixMs = now
+            }
             latitude = loc.latitude; longitude = loc.longitude
             hasFix = true
         }

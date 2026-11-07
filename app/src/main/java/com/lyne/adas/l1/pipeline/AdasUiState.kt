@@ -29,7 +29,15 @@ data class AdasUiState(
     val isNight: Boolean = true,
     val dayNightMode: DayNightMode = DayNightMode.AUTO,
     val sensitivity: SensitivityPreset = SensitivityPreset.NORMAL,
-    val showPerf: Boolean = true,
+    val showPerf: Boolean = false,
     val session: SessionStats? = null,
     val recentEvents: List<AdasEvent> = emptyList(),
+    // Geometry / calibration
+    val mountPitchDeg: Float? = null,
+    val mountRollDeg: Float = 0f,
+    val mountConvergence: Float = 0f,
+    val cameraHeightM: Float = 1.25f,
+    val vehiclePreset: com.lyne.adas.l1.calibration.VehiclePreset? = null,
+    val autoCalEnabled: Boolean = true,
+    val distanceScale: Float = 1f,
 )

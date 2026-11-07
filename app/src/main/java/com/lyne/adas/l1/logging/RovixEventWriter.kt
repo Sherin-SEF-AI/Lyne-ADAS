@@ -36,6 +36,8 @@ class RovixEventWriter(
         e.headwaySec?.let { o.put("headway_s", it.toDouble()) }
         e.distanceM?.let { o.put("distance_m", it.toDouble()) }
         e.distanceConfidence?.let { o.put("distance_conf", it.toDouble()) }
+        e.distanceSigmaM?.let { o.put("distance_sigma_m", it.toDouble()) }
+        e.closingKph?.let { o.put("closing_kph", it.toDouble()) }
         e.bbox?.let {
             o.put("bbox", JSONObject().apply {
                 put("l", it.left.toDouble()); put("t", it.top.toDouble())

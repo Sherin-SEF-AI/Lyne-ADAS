@@ -26,11 +26,11 @@ import androidx.compose.ui.unit.sp
 private data class Step(val title: String, val body: String)
 
 private val STEPS = listOf(
-    Step("LYNE ADAS", "On-device driver assistance for your phone. Forward-collision, lane-departure, pedestrian, headway and speed-sign warnings — all running locally, no cloud."),
-    Step("Warning-only", "Lyne never controls your vehicle. It is an aid, not a substitute for attention. Distances and time-to-collision are estimates. Keep your eyes on the road."),
-    Step("Mount the phone", "Place the phone landscape on the windshield/dash, rear camera facing the road, lens unobstructed and roughly at eye level. A stable mount matters for accuracy."),
-    Step("Permissions", "Camera is required to see the road. Location is optional and powers speed-based warnings (headway, overspeed)."),
-    Step("Calibrate", "Monocular distance depends on your camera's field of view. You can fine-tune it anytime from the CAL screen against a known gap."),
+    Step("Lyne", "Driver assistance that runs entirely on your phone. Forward-collision, pedestrian, tailgating, lane and speed-sign warnings. No cloud, no account, works offline."),
+    Step("Warning-only", "Lyne never controls your vehicle. It is an extra pair of eyes, not a substitute for attention. Distances and time-to-collision are estimates and are shown with their uncertainty."),
+    Step("Mount it well", "Landscape on the windshield, rear camera facing the road, lens clean and unobstructed. Lyne reads the mount's tilt from the gravity sensor and compensates automatically."),
+    Step("Permissions", "Camera is required to see the road. Location is optional but strongly recommended: speed lets Lyne suppress alerts in slow traffic and time warnings correctly."),
+    Step("Pick your vehicle", "In Calibrate, choose your vehicle type so Lyne knows the camera height. It then keeps refining that from everyday traffic, so accuracy improves as you drive."),
 )
 
 @Composable

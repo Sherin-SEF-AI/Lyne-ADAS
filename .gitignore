@@ -11,8 +11,7 @@
 app/build/
 build/
 
-# tooling / editor / agent dirs
-.claude/
+# tooling / editor dirs
 
 # transient scaffolding + capture artifacts
 .build*.log

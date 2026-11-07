@@ -48,7 +48,7 @@ class ObjectDetector(
         dequantizeOutput(engine.outputBuffers[0], engine.outputDataTypes[0], engine.outputScales[0], engine.outputZeroPoints[0])
 
         val dets = ArrayList<Detection>(16)
-        val thr = config.objectScoreThreshold
+        val thr = config.objectScoreThreshold * 0.65f // tracker keeps tracks alive on weaker hits
         for (n in 0 until numBoxes) {
             var best = -1
             var bestScore = 0f

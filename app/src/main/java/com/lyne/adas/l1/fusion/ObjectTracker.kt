@@ -1,127 +1,204 @@
 package com.lyne.adas.l1.fusion
 
+import com.lyne.adas.l1.calibration.CameraGeometry
 import com.lyne.adas.l1.inference.BBox
 import com.lyne.adas.l1.inference.Detection
 import com.lyne.adas.l1.inference.ObjectClass
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
- * A single tracked object with stable [id]. Holds the temporal state that makes FCW stable:
- * bounding-box-scale growth (for monocular TTC) and, for the lead, distance rate (for a second,
- * independent TTC estimate that can be fused with the scale one).
+ * One tracked object with a stable [id]. Owns all temporal state that makes warnings stable:
+ *  - a range Kalman filter (distance + closing speed) fed by [RangeEstimator]
+ *  - a sliding-window looming-rate fit for scale-based TTC
+ *  - a per-object real-width estimate, learned from the ground-plane cue while the object is close
+ *    enough for that cue to be sharp. A 2.0 m pickup stops being treated as a 1.8 m "average car".
+ *  - class voting, so a car that flickers to "truck" for one frame keeps its identity
  */
-class Track(val id: Int, var cls: ObjectClass, box: BBox, score: Float, nowNs: Long) {
+class Track(val id: Int, cls: ObjectClass, box: BBox, score: Float, nowNs: Long) {
+    /** Smoothed box for display and path tests. */
     var box: BBox = box; private set
+    /** Latest raw detector box (unsmoothed) used for measurements. */
+    var rawBox: BBox = box; private set
     var score: Float = score; private set
-    var hits: Int = 1
-    var misses: Int = 0
+    var hits = 1; private set
+    var misses = 0; internal set
+    val firstSeenNs = nowNs
+    var lastMatchNs = nowNs; private set
+    private var lastStepNs = 0L
 
-    private var lastWidth = box.width
-    private var lastTimeNs = nowNs
-    private var growthEma = 0f          // box-width units / second
+    private val votes = IntArray(ObjectClass.entries.size).also { it[cls.ordinal] = 3 }
+    var cls: ObjectClass = cls; private set
 
-    private var lastDist = Float.NaN
-    private var lastDistNs = 0L
-    private var closingEma = 0f         // metres / second, positive = approaching
+    val kalman = RangeKalman()
+    val scaleRate = ScaleRateEstimator()
+    val meas = RangeMeasurement()
 
-    fun matched(newBox: BBox, newScore: Float, nowNs: Long) {
-        // Light box smoothing keeps geometry steady frame to frame.
+    private var widthSum = 0.0
+    private var widthWeight = 0.0
+    /** Learned real width (m) or NaN; and its relative 1-sigma. */
+    var learnedWidthM = Float.NaN; private set
+    var learnedRelSigma = 1f; private set
+
+    // Per-frame outputs written by FusionEngine.
+    var lateralM = Float.NaN
+    var inPath = false
+    var isLead = false
+
+    val confirmed: Boolean get() = hits >= 3
+    fun ageSec(nowNs: Long): Float = (nowNs - firstSeenNs) / 1e9f
+
+    fun matched(det: Detection, nowNs: Long) {
+        val b = det.box
+        rawBox = b
+        val a = SMOOTH
         box = BBox(
-            lerp(box.left, newBox.left), lerp(box.top, newBox.top),
-            lerp(box.right, newBox.right), lerp(box.bottom, newBox.bottom),
+            box.left + a * (b.left - box.left), box.top + a * (b.top - box.top),
+            box.right + a * (b.right - box.right), box.bottom + a * (b.bottom - box.bottom),
         )
-        score = newScore
-        hits++; misses = 0
-        val dt = (nowNs - lastTimeNs) / 1e9f
-        if (dt > 1e-3f) {
-            val g = (box.width - lastWidth) / dt
-            growthEma += GROWTH_ALPHA * (g - growthEma)
-            lastWidth = box.width; lastTimeNs = nowNs
+        score = 0.6f * score + 0.4f * det.score
+        hits++; misses = 0; lastMatchNs = nowNs
+        votes[det.cls.ordinal]++
+        var best = cls.ordinal
+        for (i in votes.indices) if (votes[i] > votes[best]) best = i
+        cls = ObjectClass.entries[best]
+    }
+
+    /**
+     * Advance the filters to [nowNs]. When [fresh] (matched this frame) a new range measurement and
+     * scale sample are folded in; otherwise the Kalman coasts on its velocity.
+     */
+    fun step(nowNs: Long, fresh: Boolean, geom: CameraGeometry, inputPx: Int) {
+        val dt = if (lastStepNs == 0L) 0f else (nowNs - lastStepNs) / 1e9f
+        lastStepNs = nowNs
+        kalman.predict(dt)
+        if (!fresh) return
+
+        val b = rawBox
+        val truncated = b.left <= 0.004f || b.right >= 0.996f || b.bottom >= 0.992f
+        if (truncated) scaleRate.reset()
+        else scaleRate.add(nowNs / 1e9, sqrt(b.width * b.height))
+
+        if (RangeEstimator.measure(cls, b, geom, inputPx, learnedWidthM, learnedRelSigma, meas)) {
+            // Kalman sees only the random part; bias (pitch, prior) is constant and would just add lag.
+            kalman.update(meas.inv, meas.invJitter.coerceAtLeast(0.01f * meas.inv))
+            biasInvSigma = sqrt((meas.invSigma * meas.invSigma - meas.invJitter * meas.invJitter).coerceAtLeast(0f))
+            learnWidth(geom, inputPx)
         }
     }
 
-    /** Scale-based TTC: width / (d width / dt). NaN unless clearly expanding (approaching). */
-    fun scaleTtc(): Float {
-        if (growthEma <= 1e-3f) return Float.NaN
-        return (box.width / growthEma).coerceIn(0f, 60f)
-    }
-
-    /** Feed an external distance estimate (metres) to maintain a closing-speed based TTC. */
-    fun updateDistance(distM: Float, nowNs: Long): Float {
-        if (!lastDist.isNaN() && lastDistNs != 0L) {
-            val dt = (nowNs - lastDistNs) / 1e9f
-            if (dt > 1e-3f) {
-                val closing = (lastDist - distM) / dt
-                closingEma += CLOSE_ALPHA * (closing - closingEma)
-            }
+    private fun learnWidth(geom: CameraGeometry, inputPx: Int) {
+        val g = meas.groundM
+        if (g.isNaN() || meas.widthM.isNaN() || g > 35f) return
+        val gRel = meas.groundRel
+        if (gRel > 0.10f) return
+        val implied = geom.impliedWidth(rawBox.width, g)
+        val prior = RangeEstimator.widthPrior(cls)
+        if (implied < prior * 0.65f || implied > prior * 1.5f) return
+        val quantRel = 1.84f / (rawBox.width * inputPx).coerceAtLeast(1f)
+        val rel2 = gRel * gRel + quantRel * quantRel
+        val w = 1.0 / rel2
+        widthSum += implied * w; widthWeight += w
+        if (widthWeight > 4000.0) { widthSum *= 0.5; widthWeight *= 0.5 } // keep adapting slowly
+        val rel = maxOf(0.045f, (1.0 / sqrt(widthWeight)).toFloat()) // pitch bias is common-mode: floor it
+        if (rel < RangeEstimator.widthPriorRelSigma(cls)) {
+            learnedWidthM = (widthSum / widthWeight).toFloat()
+            learnedRelSigma = rel
         }
-        lastDist = distM; lastDistNs = nowNs
-        return distTtc(distM)
     }
 
-    fun distTtc(distM: Float): Float {
-        if (closingEma <= 0.3f) return Float.NaN // not meaningfully approaching
-        return (distM / closingEma).coerceIn(0f, 60f)
+    private var biasInvSigma = 0f
+    /** Total 1-sigma distance uncertainty: filter variance plus the cues' systematic part. */
+    val sigmaM: Float get() {
+        val q = kalman.q
+        if (kalman.q.isNaN() || q <= 0f) return Float.NaN
+        val sq = sqrt(kalman.sigmaQ * kalman.sigmaQ + biasInvSigma * biasInvSigma)
+        return sq / (q * q)
     }
 
-    private fun lerp(a: Float, b: Float) = a + SMOOTH * (b - a)
+    /** Filtered distance (m) or NaN. */
+    val distanceM: Float get() = kalman.d
+    /** Closing speed (m/s, + = approaching). */
+    val closingMps: Float get() = -kalman.v
 
-    companion object {
-        private const val GROWTH_ALPHA = 0.35f
-        private const val CLOSE_ALPHA = 0.3f
-        private const val SMOOTH = 0.5f
-    }
+    companion object { private const val SMOOTH = 0.55f }
 }
 
 /**
- * Greedy IoU multi-object tracker. Cheap, allocation-light, and good enough to give detections
- * stable identities so per-object temporal estimates (TTC, closing speed) stop jittering.
+ * Greedy multi-object tracker with score hysteresis: a new track needs a confident detection
+ * ([spawnScore]) but an existing one is kept alive by weaker ones ([config objectScoreThreshold] x0.65
+ * from the detector), which removes most flicker. Matching uses IoU, falling back to centre distance
+ * for small, far boxes whose IoU is unstable. Vehicle sub-classes match each other.
  */
 class ObjectTracker(
-    private val iouThreshold: Float = 0.3f,
-    private val maxMisses: Int = 8,
+    private val minIou: Float = 0.2f,
+    private val maxMisses: Int = 6,
 ) {
     private val tracks = ArrayList<Track>()
     private var nextId = 1
+    private val matchedTrack = BooleanArray(MAX_TRACKS)
+    private val matchedDet = BooleanArray(256)
 
-    fun update(detections: List<Detection>, nowNs: Long): List<Track> {
-        val matchedTrack = BooleanArray(tracks.size)
-        val matchedDet = BooleanArray(detections.size)
+    fun update(detections: List<Detection>, spawnScore: Float, nowNs: Long): List<Track> {
+        val nd = detections.size.coerceAtMost(matchedDet.size)
+        java.util.Arrays.fill(matchedTrack, false)
+        java.util.Arrays.fill(matchedDet, false)
 
-        // Greedy: repeatedly take the highest-IoU (track, det) pair of the same class.
         while (true) {
-            var bestIou = iouThreshold
+            var best = 0.05f
             var bt = -1; var bd = -1
             for (ti in tracks.indices) {
                 if (matchedTrack[ti]) continue
                 val t = tracks[ti]
-                for (di in detections.indices) {
+                for (di in 0 until nd) {
                     if (matchedDet[di]) continue
                     val d = detections[di]
-                    if (d.cls != t.cls) continue
-                    val iou = t.box.iou(d.box)
-                    if (iou > bestIou) { bestIou = iou; bt = ti; bd = di }
+                    if (!compatible(t.cls, d.cls)) continue
+                    val s = matchScore(t.box, d.box)
+                    if (s > best) { best = s; bt = ti; bd = di }
                 }
             }
             if (bt < 0) break
-            tracks[bt].matched(detections[bd].box, detections[bd].score, nowNs)
+            tracks[bt].matched(detections[bd], nowNs)
             matchedTrack[bt] = true; matchedDet[bd] = true
         }
 
-        // Age unmatched tracks, drop the stale ones.
         var i = tracks.size - 1
         while (i >= 0) {
-            if (!matchedTrack[i]) { tracks[i].misses++; if (tracks[i].misses > maxMisses) tracks.removeAt(i) }
+            if (!matchedTrack[i]) {
+                val t = tracks[i]
+                t.misses++
+                // Unconfirmed tracks die fast; confirmed ones may coast briefly through occlusion.
+                if (t.misses > (if (t.confirmed) maxMisses else 1)) tracks.removeAt(i)
+            }
             i--
         }
-        // Spawn new tracks for unmatched detections.
-        for (di in detections.indices) {
-            if (!matchedDet[di]) {
-                val d = detections[di]
-                tracks.add(Track(nextId++, d.cls, d.box, d.score, nowNs))
-            }
+        for (di in 0 until nd) {
+            if (matchedDet[di]) continue
+            val d = detections[di]
+            if (d.score < spawnScore || tracks.size >= MAX_TRACKS) continue
+            tracks.add(Track(nextId++, d.cls, d.box, d.score, nowNs))
         }
         return tracks
     }
 
+    private fun compatible(a: ObjectClass, b: ObjectClass): Boolean =
+        a == b || (a.isVehicle && b.isVehicle) || (a == ObjectClass.MOTORCYCLE && b == ObjectClass.BICYCLE) ||
+            (a == ObjectClass.BICYCLE && b == ObjectClass.MOTORCYCLE)
+
+    private fun matchScore(t: BBox, d: BBox): Float {
+        val iou = t.iou(d)
+        if (iou >= minIou) return 0.2f + iou
+        val maxW = maxOf(t.width, d.width, 1e-3f)
+        val dist = sqrt((t.cx - d.cx) * (t.cx - d.cx) + (t.cy - d.cy) * (t.cy - d.cy))
+        val ratio = d.width / t.width.coerceAtLeast(1e-4f)
+        if (dist < 0.6f * maxW && ratio in 0.67f..1.5f && abs(t.cy - d.cy) < 0.6f * maxOf(t.height, d.height)) {
+            return 0.2f * (1f - dist / (0.6f * maxW))
+        }
+        return 0f
+    }
+
     fun reset() { tracks.clear() }
+
+    companion object { const val MAX_TRACKS = 48 }
 }

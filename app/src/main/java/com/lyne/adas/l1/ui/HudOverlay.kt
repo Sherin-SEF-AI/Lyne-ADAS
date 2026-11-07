@@ -19,6 +19,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
 import com.lyne.adas.l1.fusion.FusionResult
 import com.lyne.adas.l1.fusion.Severity
+import com.lyne.adas.l1.fusion.TrackedObject
+import androidx.compose.ui.graphics.PathEffect
 import com.lyne.adas.l1.inference.BBox
 import com.lyne.adas.l1.inference.Detection
 import com.lyne.adas.l1.inference.ObjectClass
@@ -37,6 +39,7 @@ fun HudOverlay(
     palette: LynePalette,
     phase: Float,
     modifier: Modifier = Modifier,
+    showHorizon: Boolean = true,
 ) {
     val measurer = rememberTextMeasurer()
     Canvas(modifier = modifier) {
@@ -46,7 +49,8 @@ fun HudOverlay(
             if (result.lane.mask != null) drawMask(result, map, palette, phase)
             else drawCarpet(result, map, palette, phase)
         }
-        for (d in result.detections) drawDetection(d, result, map, palette, measurer)
+        if (showHorizon) drawHorizon(result, map, palette)
+        for (o in result.objects) drawObject(o, result, map, palette, measurer)
         drawDepartureArrow(result, palette)
     }
 }
@@ -145,25 +149,44 @@ private fun DrawScope.drawChevrons(
     }
 }
 
-private fun DrawScope.drawDetection(d: Detection, result: FusionResult, map: Mapper, p: LynePalette, measurer: TextMeasurer) {
-    val isLead = result.leadBox != null && d.box == result.leadBox
+private fun DrawScope.drawObject(o: TrackedObject, result: FusionResult, map: Mapper, p: LynePalette, measurer: TextMeasurer) {
     val color = when {
-        isLead && result.fcw == Severity.CRITICAL -> p.critical
-        isLead && result.fcw == Severity.CAUTION -> p.caution
-        d.cls.isVru && result.vru == Severity.CRITICAL -> p.critical
-        d.cls.isVru -> p.caution
-        d.cls == ObjectClass.STOP_SIGN -> p.critical
-        d.cls.isVehicle -> p.text
+        o.isLead && result.fcw == Severity.CRITICAL -> p.critical
+        o.isLead && result.fcw == Severity.CAUTION -> p.caution
+        o.isLead -> p.accent
+        o.cls.isVru && result.vru == Severity.CRITICAL -> p.critical
+        o.cls.isVru && o.inPath -> p.caution
+        o.cls == ObjectClass.STOP_SIGN -> p.critical
+        o.inPath -> p.text
         else -> p.textDim
     }
-    val l = map.x(d.box.left); val t = map.y(d.box.top)
-    val r = map.x(d.box.right); val b = map.y(d.box.bottom)
-    if (d.cls == ObjectClass.UNKNOWN && !isLead) return // declutter: only show relevant classes
-    drawCornerBox(l, t, r, b, color, (if (isLead) 3f else 2f) * density)
+    val l = map.x(o.box.left); val t = map.y(o.box.top)
+    val r = map.x(o.box.right); val b = map.y(o.box.bottom)
+    drawCornerBox(l, t, r, b, color, (if (o.isLead) 3.2f else 1.8f) * density)
+    if (o.isLead) {
+        // Ground-contact marker: where the range is measured from.
+        drawLine(color.copy(alpha = 0.8f), Offset(l, b), Offset(r, b), 2f * density)
+    }
+    val d = o.distanceM
+    val label = when {
+        d == null -> classTag(o.cls)
+        o.isLead -> {
+            val s = o.sigmaM
+            if (s != null && s >= 1f) "${d.toInt()} m ±${s.toInt()}" else "${d.toInt()} m"
+        }
+        d < 80f -> "${classTag(o.cls)} ${d.toInt()}m"
+        else -> classTag(o.cls)
+    }
+    drawLabel(measurer, label, l, t, color, p.chip, big = o.isLead)
+}
 
-    val label = if (isLead && result.leadDistanceM != null) "${classTag(d.cls)} ${result.leadDistanceM.toInt()}m"
-    else classTag(d.cls)
-    drawLabel(measurer, label, l, t, color, p.chip)
+private fun DrawScope.drawHorizon(result: FusionResult, map: Mapper, p: LynePalette) {
+    val yl = result.horizonLeftY; val yr = result.horizonRightY
+    if (yl.isNaN() || yr.isNaN()) return
+    drawLine(
+        p.accent.copy(alpha = 0.28f), Offset(map.x(0f), map.y(yl)), Offset(map.x(1f), map.y(yr)),
+        strokeWidth = 1.2f * density, pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f * density, 10f * density)),
+    )
 }
 
 private fun DrawScope.drawCornerBox(l: Float, t: Float, r: Float, b: Float, color: Color, sw: Float) {
@@ -177,8 +200,8 @@ private fun DrawScope.drawCornerBox(l: Float, t: Float, r: Float, b: Float, colo
     drawLine(color, Offset(r, b), Offset(r - len, b), sw); drawLine(color, Offset(r, b), Offset(r, b - len), sw)
 }
 
-private fun DrawScope.drawLabel(measurer: TextMeasurer, text: String, x: Float, y: Float, color: Color, bg: Color) {
-    val style = TextStyle(color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+private fun DrawScope.drawLabel(measurer: TextMeasurer, text: String, x: Float, y: Float, color: Color, bg: Color, big: Boolean = false) {
+    val style = TextStyle(color = color, fontSize = if (big) 14.sp else 11.sp, fontWeight = FontWeight.Bold)
     val layout = measurer.measure(text, style)
     val pad = 3f * density
     val top = (y - layout.size.height - 2 * pad).coerceAtLeast(0f)

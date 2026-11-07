@@ -21,7 +21,7 @@ data class AdasConfig(
     val ttcCautionSec: Float = 2.7f,
     val ttcCriticalSec: Float = 1.5f,
     /** Below this distance-estimate confidence [0,1], FCW caution is downgraded (no hard alert). */
-    val minDistanceConfidence: Float = 0.45f,
+    val minDistanceConfidence: Float = 0.40f,
 
     // --- Headway / tailgating ---
     val headwayWarnSec: Float = 1.0f,
@@ -48,12 +48,18 @@ data class AdasConfig(
     // --- Pipeline / safety ---
     /** Detection is gated to the ego-path band (fraction of frame width around centre). */
     val egoPathHalfWidthFrac: Float = 0.28f,
-    /** Min frames a track must persist before it can raise a hard alert (debounce). */
-    val alertDebounceFrames: Int = 2,
+    /** Multiplier on alert onset hold times (time-based persistence). >1 = calmer, <1 = quicker. */
+    val alertHoldScale: Float = 1.0f,
+
+    // --- Alerts output ---
+    /** Spoken alerts ("Brake", "Pedestrian ahead") via the offline system TTS. */
+    val voiceAlerts: Boolean = true,
+    /** Per-frame lead-vehicle CSV (distance, sigma, cues, TTC, speed) for accuracy validation. */
+    val accuracyLog: Boolean = false,
 
     // --- Debug / dev ---
     val debugInjectSynthetic: Boolean = false,
-    val showPerfOverlay: Boolean = true,
+    val showPerfOverlay: Boolean = false,
     val emitRovixSidecar: Boolean = true,
     val dashcamEnabled: Boolean = false, // feature-flagged OFF by default
     val dashcamSeconds: Int = 12,

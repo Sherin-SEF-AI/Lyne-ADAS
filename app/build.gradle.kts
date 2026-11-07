@@ -12,8 +12,8 @@ android {
         applicationId = "com.lyne.adas.l1"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
 
         vectorDrawables { useSupportLibrary = true }
     }
@@ -52,6 +52,9 @@ android {
         // TFLite/LiteRT ship native .so per ABI; never compress .tflite model assets.
         jniLibs { useLegacyPackaging = false }
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     androidResources {
         noCompress += "tflite"
     }
@@ -87,4 +90,6 @@ dependencies {
     implementation(libs.litert.metadata)
 
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
 }

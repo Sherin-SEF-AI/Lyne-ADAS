@@ -2,14 +2,14 @@ package com.lyne.adas.l1.fusion
 
 import com.lyne.adas.l1.inference.BBox
 
-enum class AlertType { FCW, VRU, LDW, HEADWAY, OVERSPEED, STOP }
+enum class AlertType { FCW, VRU, LDW, HEADWAY, OVERSPEED, STOP, LEAD_GO }
 
 /** Severity ladder. Color is "earned" only above NONE; CRITICAL drives the strongest alert. */
 enum class Severity { NONE, INFO, CAUTION, CRITICAL }
 
 /**
- * One fused warning record. Also the shape serialized to the ROVIX sidecar JSON stream.
- * Nullable fields are populated per [type] (e.g. ttc for FCW, headway for HEADWAY).
+ * One fused warning record, emitted once per incident (onset or escalation). Also the shape
+ * serialized to the ROVIX sidecar JSON stream. Nullable fields are populated per [type].
  */
 data class AdasEvent(
     val type: AlertType,
@@ -25,4 +25,6 @@ data class AdasEvent(
     val laneOffset: Float? = null,
     val speedKph: Float? = null,
     val speedLimitKph: Int? = null,
+    val distanceSigmaM: Float? = null,
+    val closingKph: Float? = null,
 )

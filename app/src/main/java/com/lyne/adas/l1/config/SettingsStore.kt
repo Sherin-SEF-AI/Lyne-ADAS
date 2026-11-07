@@ -37,6 +37,8 @@ class SettingsStore(context: Context) {
             showPerfOverlay = prefs.getBoolean(K_PERF, d.showPerfOverlay),
             emitRovixSidecar = prefs.getBoolean(K_ROVIX, d.emitRovixSidecar),
             dashcamEnabled = prefs.getBoolean(K_DASH, d.dashcamEnabled),
+            voiceAlerts = prefs.getBoolean(K_VOICE, d.voiceAlerts),
+            accuracyLog = prefs.getBoolean(K_ACCLOG, d.accuracyLog),
         )
     }
 
@@ -48,6 +50,7 @@ class SettingsStore(context: Context) {
             .putFloat(K_EGO, c.egoPathHalfWidthFrac)
             .putBoolean(K_INJECT, c.debugInjectSynthetic).putBoolean(K_PERF, c.showPerfOverlay)
             .putBoolean(K_ROVIX, c.emitRovixSidecar).putBoolean(K_DASH, c.dashcamEnabled)
+            .putBoolean(K_VOICE, c.voiceAlerts).putBoolean(K_ACCLOG, c.accuracyLog)
             .apply()
     }
 
@@ -74,5 +77,7 @@ class SettingsStore(context: Context) {
         private const val K_PERF = "perf"
         private const val K_ROVIX = "rovix"
         private const val K_DASH = "dashcam"
+        private const val K_VOICE = "voice"
+        private const val K_ACCLOG = "acc_log"
     }
 }

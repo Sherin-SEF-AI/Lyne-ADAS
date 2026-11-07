@@ -12,17 +12,17 @@ enum class SensitivityPreset {
         CALM -> base.copy(
             ttcCautionSec = 3.3f, ttcCriticalSec = 1.9f,
             headwayWarnSec = 1.4f, headwayCriticalSec = 0.8f,
-            objectScoreThreshold = 0.48f, alertDebounceFrames = 3,
+            objectScoreThreshold = 0.48f, alertHoldScale = 1.35f,
         )
         NORMAL -> base.copy(
             ttcCautionSec = 2.7f, ttcCriticalSec = 1.5f,
             headwayWarnSec = 1.0f, headwayCriticalSec = 0.6f,
-            objectScoreThreshold = 0.40f, alertDebounceFrames = 2,
+            objectScoreThreshold = 0.40f, alertHoldScale = 1.0f,
         )
         AGGRESSIVE -> base.copy(
             ttcCautionSec = 2.3f, ttcCriticalSec = 1.2f,
             headwayWarnSec = 0.9f, headwayCriticalSec = 0.5f,
-            objectScoreThreshold = 0.33f, alertDebounceFrames = 1,
+            objectScoreThreshold = 0.35f, alertHoldScale = 0.7f,
         )
     }
 }

@@ -12,10 +12,22 @@ class OverspeedMonitor(private val config: AdasConfig) {
     private var currentLimitKph: Int? = null
     private var limitSetAtMs: Long = 0L
 
+    private var pendingKph: Int? = null
+    private var pendingAtMs = 0L
+
+    /**
+     * A single classification is not trusted: the same limit must be read twice within 3 s (or once
+     * at very high confidence). One misread "30" on a highway no longer triggers an overspeed alarm.
+     */
     fun onSign(sign: SignResult, nowMs: Long) {
-        if (sign.type == SignType.SPEED_LIMIT && sign.speedLimitKph != null && sign.confidence >= config.signMinConfidence) {
-            currentLimitKph = sign.speedLimitKph
-            limitSetAtMs = nowMs
+        val kph = sign.speedLimitKph ?: return
+        if (sign.type != SignType.SPEED_LIMIT || sign.confidence < config.signMinConfidence) return
+        val confirmed = sign.confidence >= 0.9f || kph == currentLimitKph ||
+            (kph == pendingKph && nowMs - pendingAtMs < 3000L)
+        if (confirmed) {
+            currentLimitKph = kph; limitSetAtMs = nowMs; pendingKph = null
+        } else {
+            pendingKph = kph; pendingAtMs = nowMs
         }
     }
 
