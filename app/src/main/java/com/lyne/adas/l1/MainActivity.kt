@@ -97,6 +97,8 @@ class MainActivity : ComponentActivity() {
                     onSetHeight = { h, preset -> controller.setCameraHeight(h, preset) },
                     onSetAutoCal = { controller.setAutoCal(it) },
                     onResetAutoCal = { controller.resetAutoCal() },
+                    onStartRangeCheck = { controller.startRangeCheck(it) },
+                    onShareAccuracy = { controller.shareAccuracyLog() },
                     onClose = { screen = Screen.HUD },
                 )
                 Screen.SESSION -> SessionScreen(

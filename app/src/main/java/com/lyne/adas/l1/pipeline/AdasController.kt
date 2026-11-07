@@ -95,6 +95,7 @@ class AdasController(
     private var streamW = 0; private var streamH = 0
     private var modelInputPx = 256
     private var accuracyLog: AccuracyLogger? = null
+    private val rangeCheck = com.lyne.adas.l1.logging.RangeCheck(context)
     private var lastUiPushMs = 0L
 
     fun start(preview: PreviewView?) {
@@ -183,6 +184,7 @@ class AdasController(
         )
         alerts.onResult(result, nowMs)
         accuracyLog?.record(nowMs, result)
+        val rcChanged = rangeCheck.onResult(result, nowMs)
         session?.tick(nowMs, location.speedMps, location.latitude, location.longitude, result.events)
         if (result.topSeverity == com.lyne.adas.l1.fusion.Severity.CRITICAL) recorder?.onEvent()
         if (result.events.isNotEmpty()) {
@@ -194,7 +196,7 @@ class AdasController(
         }
         perf.backend = p.objectBackend
         // UI at <= ~20 Hz: recomposition costs more than inference on budget phones.
-        if (result.events.isEmpty() && nowMs - lastUiPushMs < 50L) return
+        if (result.events.isEmpty() && !rcChanged && nowMs - lastUiPushMs < 50L) return
         lastUiPushMs = nowMs
         val a = analyzer
         val aspect = if (a != null && a.displayHeight > 0) a.displayWidth.toFloat() / a.displayHeight else _state.value.frameAspect
@@ -208,6 +210,7 @@ class AdasController(
             mountPitchDeg = motion.mount.pitchRad.let { if (it.isNaN()) null else Math.toDegrees(it.toDouble()).toFloat() },
             mountRollDeg = Math.toDegrees(kotlin.math.atan(motion.mount.rollTan.toDouble())).toFloat(),
             mountConvergence = motion.mount.convergence,
+            rangeCheck = rangeCheck.state,
         )
     }
 
@@ -371,18 +374,29 @@ class AdasController(
         restart()
     }
 
-    /** Share the per-frame lead CSV, if accuracy logging produced one. */
+    fun startRangeCheck(trueM: Float) {
+        rangeCheck.start(trueM, System.currentTimeMillis())
+        _state.value = _state.value.copy(rangeCheck = rangeCheck.state)
+    }
+
+    fun cancelRangeCheck() {
+        rangeCheck.cancel()
+        _state.value = _state.value.copy(rangeCheck = rangeCheck.state)
+    }
+
+    /** Share all accuracy files (range checks + per-frame drive logs) in one go. */
     fun shareAccuracyLog() {
         val dir = File(context.getExternalFilesDir(null), "accuracy")
-        val file = dir.listFiles { f -> f.extension == "csv" }?.maxByOrNull { it.lastModified() } ?: return
+        val files = dir.listFiles { f -> f.extension == "csv" }?.sortedByDescending { it.lastModified() }?.take(10)
+        if (files.isNullOrEmpty()) return
         try {
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-            val intent = Intent(Intent.ACTION_SEND).apply {
+            val uris = ArrayList(files.map { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it) })
+            val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                 type = "text/csv"
-                putExtra(Intent.EXTRA_STREAM, uri)
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "Export accuracy log").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            context.startActivity(Intent.createChooser(intent, "Export accuracy data").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (t: Throwable) { Log.w(TAG, "share csv failed", t) }
     }
 

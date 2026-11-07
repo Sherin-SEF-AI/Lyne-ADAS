@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,6 +47,8 @@ fun CalibrationScreen(
     onSetHeight: (Float, VehiclePreset?) -> Unit,
     onSetAutoCal: (Boolean) -> Unit,
     onResetAutoCal: () -> Unit,
+    onStartRangeCheck: (Float) -> Unit,
+    onShareAccuracy: () -> Unit,
     onClose: () -> Unit,
 ) {
     val p = palette()
@@ -96,18 +99,7 @@ fun CalibrationScreen(
                     }
                     Text("Only change this if your phone uses a wide or zoom lens for the main camera.", color = p.textDim, fontSize = 12.sp)
                 }
-                3 -> {
-                    StepTitle("Known-gap check (optional)")
-                    Text("Park behind a car at a measured gap (e.g. 10 m, rear bumper to your front bumper + bonnet). Compare with the live reading and nudge.", color = p.textDim, fontSize = 13.sp)
-                    val d = state.fusion?.leadDistanceM
-                    Text(d?.let { "Lead now: ${"%.1f".format(it)} m" } ?: "No lead vehicle in view", color = p.text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Chip("–3%", false) { onSetScale(0.97f) }
-                        Chip("+3%", false) { onSetScale(1.03f) }
-                        Chip("RESET", false) { onSetScale(1.0f) }
-                    }
-                    Text("Correction: ×${"%.2f".format(state.distanceScale)}", color = p.textDim, fontSize = 12.sp)
-                }
+                3 -> RangeCheckStep(state, onStartRangeCheck, onSetScale, onShareAccuracy)
                 else -> {
                     StepTitle("Auto-calibration")
                     SwitchRow(
@@ -162,4 +154,65 @@ private fun LevelBubble(pitchDeg: Float?, rollDeg: Float) {
             drawCircle(if (ok) p.ok else p.caution, r * 0.16f, Offset(c.x + bx, c.y + by))
         }
     }
+}
+
+/**
+ * Parked accuracy test: measure the gap to a parked car (rear bumper to the PHONE, not your bumper),
+ * pick it, record 5 s. Repeat at several gaps; results are listed and saved to rangecheck.csv.
+ */
+@Composable
+private fun RangeCheckStep(
+    state: AdasUiState,
+    onStart: (Float) -> Unit,
+    onSetScale: (Float) -> Unit,
+    onShare: () -> Unit,
+) {
+    val p = palette()
+    val rc = state.rangeCheck
+    var trueM by remember { mutableFloatStateOf(10f) }
+    StepTitle("Range check (parked)")
+    Text(
+        "Park behind a car and measure from its rear bumper to your PHONE (tape or laser). " +
+            "Pick that distance and record. Repeat at a few gaps (5–40 m) for a full picture.",
+        color = p.textDim, fontSize = 13.sp,
+    )
+    val live = state.fusion?.leadDistanceM
+    Text(live?.let { "Live lead: ${"%.1f".format(it)} m" + (state.fusion?.leadSigmaM?.let { s -> "  ±${"%.1f".format(s)}" } ?: "") } ?: "No lead vehicle in view",
+        color = p.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(5f, 10f, 15f, 20f, 30f, 40f).forEach { d -> Chip("${d.toInt()} m", trueM == d) { trueM = d } }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Chip("–0.5", false) { trueM = (trueM - 0.5f).coerceAtLeast(1f) }
+        Text("${"%.1f".format(trueM)} m", color = p.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Chip("+0.5", false) { trueM = (trueM + 0.5f).coerceAtMost(120f) }
+        Spacer(Modifier.width(8.dp))
+        if (rc.running) Text("Recording ${(rc.progress * 100).toInt()}%", color = p.accent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        else PillButton("RECORD 5 s", p.accent) { onStart(trueM) }
+    }
+    rc.message?.let { Text(it, color = p.caution, fontSize = 13.sp) }
+    rc.last?.let { r ->
+        val good = kotlin.math.abs(r.errorPct) <= 10f
+        Text(
+            "Measured ${"%.1f".format(r.medianM)} m vs ${"%.1f".format(r.trueM)} m  →  ${"%+.1f".format(r.errorM)} m (${"%+.0f".format(r.errorPct)}%)" +
+                "   spread ${"%.1f".format(r.p10M)}–${"%.1f".format(r.p90M)} m",
+            color = if (good) p.ok else p.caution, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+        )
+    }
+    if (rc.history.size > 1) {
+        val mae = rc.history.map { kotlin.math.abs(it.errorM) }.average()
+        Text("${rc.history.size} checks · mean abs error ${"%.1f".format(mae)} m", color = p.text, fontSize = 13.sp)
+        rc.history.takeLast(6).forEach { r ->
+            Text("${"%.1f".format(r.trueM)} m → ${"%.1f".format(r.medianM)} m (${"%+.0f".format(r.errorPct)}%)", color = p.textDim, fontSize = 12.sp)
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Fine-tune:", color = p.textDim, fontSize = 12.sp)
+        Chip("–3%", false) { onSetScale(0.97f) }
+        Chip("+3%", false) { onSetScale(1.03f) }
+        Chip("RESET", false) { onSetScale(1.0f) }
+        Text("×${"%.2f".format(state.distanceScale)}", color = p.textDim, fontSize = 12.sp)
+    }
+    PillButton("SHARE RESULTS (CSV)", p.text, onShare)
+    Text("Analyse on a computer with tools/validate_accuracy.py static rangecheck.csv", color = p.textDim, fontSize = 11.sp)
 }

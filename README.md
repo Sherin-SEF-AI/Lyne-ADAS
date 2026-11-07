@@ -15,7 +15,7 @@ No cloud, no account, works offline. One APK that tunes itself from a 2 GB budge
 ![Release](https://img.shields.io/github/v/release/Sherin-SEF-AI/Lyne-ADAS?color=brightgreen&label=download)
 ![Stars](https://img.shields.io/github/stars/Sherin-SEF-AI/Lyne-ADAS?style=social)
 
-[**Website**](https://sherin-sef-ai.github.io/Lyne-ADAS/) · [**Download APK**](https://github.com/Sherin-SEF-AI/Lyne-ADAS/releases/latest) · [**Architecture**](ARCHITECTURE.md) · [**Models**](models/README.md) · [**Safety**](#safety-and-limitations)
+[**Website**](https://sherin-sef-ai.github.io/Lyne-ADAS/) · [**Download APK**](https://github.com/Sherin-SEF-AI/Lyne-ADAS/releases/latest) · [**Architecture**](ARCHITECTURE.md) · [**Models**](models/README.md) · [**Validation**](VALIDATION.md) · [**Safety**](#safety-and-limitations)
 
 </div>
 
@@ -70,9 +70,11 @@ v2 rebuilds the chain from pixels to alerts:
 ./gradlew :app:testDebugUnitTest   # prints the numbers above
 ```
 
-These are simulations, not road certification. Real-world accuracy still depends on mount, lighting and
-calibration. Turn on **Settings → Accuracy log (CSV)** to log per-frame lead distance, uncertainty, TTC and
-speed, and compare against radar, lidar or a tape measure. Please share what you find in an issue.
+These are simulations, not road certification. Real-world accuracy depends on mount, road slope,
+lighting and calibration. **Measure it yourself:** the in-app **Calibrate → Range check** gives a parked
+known-gap result in minutes. `tools/validate_accuracy.py` compares drive logs against radar or lidar and
+audits warnings for false alarms and misses. The protocol is in [VALIDATION.md](VALIDATION.md). Please share
+your results in an issue.
 
 ## Features
 
@@ -87,7 +89,7 @@ speed, and compare against radar, lidar or a tape measure. Please share what you
 | **Voice alerts** | Short offline cues ("Brake", "Pedestrian", "Speed limit 60") via the system TTS |
 | **Event dashcam** | Ring buffer keeps a clip around every critical warning |
 | **Trip history** | Route map, stats and an event timeline for every drive |
-| **Accuracy log** | Per-frame CSV for validation against ground truth |
+| **Accuracy tools** | In-app parked range check, per-frame CSV log, and a validation script for radar or lidar comparisons |
 | **Guided calibration** | Live level bubble, vehicle-height presets, FoV, known-gap check, auto-cal status |
 | **Auto day / night** | Ambient-light-driven HUD theme |
 

@@ -40,4 +40,5 @@ data class AdasUiState(
     val vehiclePreset: com.lyne.adas.l1.calibration.VehiclePreset? = null,
     val autoCalEnabled: Boolean = true,
     val distanceScale: Float = 1f,
+    val rangeCheck: com.lyne.adas.l1.logging.RangeCheckState = com.lyne.adas.l1.logging.RangeCheckState(),
 )
