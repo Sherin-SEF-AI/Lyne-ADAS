@@ -45,7 +45,11 @@ class AlertGate(
         } else if (r.ordinal < active.ordinal) {
             if (belowSinceMs == 0L) belowSinceMs = nowMs
             if (nowMs - belowSinceMs >= offMs) {
-                next = if (r.ordinal >= target.ordinal) r else target
+                // The raw signal has been below the active level for offMs: release to it and drop the
+                // evidence above it, otherwise draining evidence would keep the old level alive.
+                next = r
+                if (r.ordinal < Severity.CRITICAL.ordinal) evCritical = 0f
+                if (r.ordinal < Severity.CAUTION.ordinal) evCaution = 0f
                 belowSinceMs = 0L
             }
         } else belowSinceMs = 0L
@@ -62,6 +66,9 @@ class AlertGate(
 
     private fun accumulate(ev: Float, on: Boolean, dt: Float, holdMs: Long): Float =
         if (on) (ev + dt).coerceAtMost(holdMs * 1.5f) else (ev - dt * 0.5f).coerceAtLeast(0f)
+
+    /** Forget accumulated evidence (e.g. the tracked lead changed: the new one must earn its own). */
+    fun resetEvidence() { evCaution = 0f; evCritical = 0f }
 
     fun reset() { active = Severity.NONE; evCaution = 0f; evCritical = 0f; lastMs = -1L; belowSinceMs = 0L }
 }

@@ -169,7 +169,7 @@ class ObjectTracker(
                 val t = tracks[i]
                 t.misses++
                 // Unconfirmed tracks die fast; confirmed ones may coast briefly through occlusion.
-                if (t.misses > (if (t.confirmed) maxMisses else 1)) tracks.removeAt(i)
+                if (t.misses > (if (t.confirmed) maxMisses else 2)) tracks.removeAt(i)
             }
             i--
         }

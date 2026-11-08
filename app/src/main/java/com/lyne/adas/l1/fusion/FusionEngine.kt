@@ -94,7 +94,9 @@ class FusionEngine(
         // Stickiness: don't hop to a marginally closer candidate.
         val prev = tracks.firstOrNull { it.id == leadId && it.inPath && it.misses <= 2 && !it.distanceM.isNaN() }
         if (prev != null && lead != null && prev !== lead && lead.distanceM > prev.distanceM - 3f) lead = prev
-        leadId = lead?.id ?: -1
+        val newLeadId = lead?.id ?: -1
+        if (newLeadId != leadId) { fcwGate.resetEvidence(); headwayGate.resetEvidence() }
+        leadId = newLeadId
         lead?.isLead = true
 
         var leadDist: Float? = null; var leadSigma: Float? = null; var leadConf: Float? = null
@@ -134,7 +136,7 @@ class FusionEngine(
             if (egoKnown && speedMps >= 2f) {
                 val hw = d / speedMps
                 headwaySec = hw
-                if (features.headway && speedMps >= MIN_HEADWAY_SPEED_MPS && relSigma < 0.3f && lead.confirmed) {
+                if (features.headway && !config.videoTestMode && speedMps >= MIN_HEADWAY_SPEED_MPS && relSigma < 0.3f && lead.confirmed) {
                     headwayRaw = when {
                         hw < hwCrit -> Severity.CRITICAL
                         hw < hwWarn -> Severity.CAUTION
@@ -165,7 +167,7 @@ class FusionEngine(
         var ldwRaw = Severity.NONE
         var laneOffset: Float? = null
         if (features.ldw) {
-            val r = ldw.update(p.lane, yawRate, laneCurvature(p.lane), p.timestampNs)
+            val r = ldw.update(p.lane, laneOffsetFor(p.lane, geom), yawRate, laneCurvature(p.lane), p.timestampNs)
             // Lane departure only means something while actually driving.
             ldwRaw = if (!speedMps.isNaN() && speedMps < MIN_LDW_SPEED_MPS) Severity.NONE else r.severity
             laneOffset = if (p.lane.confidence >= config.ldwMinLaneConfidence) r.offset else null
@@ -353,6 +355,34 @@ class FusionEngine(
     private fun Float.orNull(): Float? = if (isNaN()) null else this
     private fun Severity.infoOnly(): Severity = if (this == Severity.INFO) Severity.INFO else Severity.NONE
     private fun maxSev(a: Severity, b: Severity) = if (a.ordinal >= b.ordinal) a else b
+
+    /**
+     * Lateral position for LDW. The drivable-area model outlines the whole ROAD, not the ego lane. On a
+     * single-lane-wide surface (<= ~4.6 m) the road centre is the lane centre, so the classic offset works.
+     * On a wider road, driving in the left or right lane is normal, so only the clearance to the road
+     * EDGE matters: we map "0.9 m of clearance .. touching the edge" onto offset 0 .. 1 (road-edge
+     * departure warning). Uses the nearest row at 5-15 m, converted to metres with the camera geometry.
+     */
+    private fun laneOffsetFor(lane: LaneResult, geom: CameraGeometry): Float {
+        val l = lane.leftLaneX ?: return lane.centerOffset
+        val r = lane.rightLaneX ?: return lane.centerOffset
+        for (i in lane.rows.indices.reversed()) {
+            val lx = l.getOrNull(i) ?: continue; val rx = r.getOrNull(i) ?: continue
+            if (lx.isNaN() || rx.isNaN()) continue
+            val d = geom.groundDistance(0.5f, lane.rows[i])
+            if (d.isNaN() || d < 5f) continue
+            if (d > 15f) break
+            val leftM = geom.lateralM(lx, d); val rightM = geom.lateralM(rx, d)
+            val width = rightM - leftM
+            if (width < 2f) return 0f              // implausible: let confidence gating handle it
+            if (width <= 4.6f) return lane.centerOffset
+            val leftClear = -PathIntrusion.EGO_HALF_M - leftM
+            val rightClear = rightM - PathIntrusion.EGO_HALF_M
+            return if (rightClear < leftClear) (1f - rightClear / 0.9f).coerceAtMost(1.5f).coerceAtLeast(0f)
+            else -(1f - leftClear / 0.9f).coerceAtMost(1.5f).coerceAtLeast(0f)
+        }
+        return lane.centerOffset
+    }
 
     /** Lane centre shift from far to near rows, a proxy for road curvature (normalized units). */
     private fun laneCurvature(lane: LaneResult): Float {

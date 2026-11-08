@@ -21,13 +21,13 @@ class LaneDepartureLogic(private val config: AdasConfig) {
      * On a bend the offset naturally grows, so we relax the warn threshold proportionally to avoid
      * false departures through curves.
      */
-    fun update(lane: LaneResult, yawRate: Float, curvature: Float, timestampNs: Long): LaneDepartureResult {
+    fun update(lane: LaneResult, offsetIn: Float, yawRate: Float, curvature: Float, timestampNs: Long): LaneDepartureResult {
         if (lane.confidence < config.ldwMinLaneConfidence) {
             lastOffset = Float.NaN
-            return LaneDepartureResult(Severity.NONE, lane.centerOffset, suppressed = false)
+            return LaneDepartureResult(Severity.NONE, offsetIn, suppressed = false)
         }
 
-        val offset = lane.centerOffset
+        val offset = offsetIn
         // Lateral velocity in half-lane units/sec from the offset trajectory.
         val lateralVel = if (!lastOffset.isNaN() && lastTimeNs != 0L) {
             val dt = (timestampNs - lastTimeNs) / 1e9f

@@ -98,6 +98,7 @@ class AdasController(
     private val rangeCheck = com.lyne.adas.l1.logging.RangeCheck(context)
     private var lastUiPushMs = 0L
     private var lastDiagMs = 0L
+    private val diagEvents = StringBuilder()
 
     fun start(preview: PreviewView?) {
         if (started) return
@@ -187,7 +188,8 @@ class AdasController(
         )
         alerts.onResult(result, nowMs)
         accuracyLog?.record(nowMs, result)
-        if (nowMs - lastDiagMs >= 1000L) { lastDiagMs = nowMs; logDiag(result, speed) }
+        for (e in result.events) diagEvents.append(e.type.name).append(':').append(e.severity.name.take(4)).append(' ')
+        if (nowMs - lastDiagMs >= 1000L) { lastDiagMs = nowMs; logDiag(result, speed); diagEvents.setLength(0) }
         val rcChanged = rangeCheck.onResult(result, nowMs)
         session?.tick(nowMs, location.speedMps, location.latitude, location.longitude, result.events)
         if (result.topSeverity == com.lyne.adas.l1.fusion.Severity.CRITICAL) recorder?.onEvent()
@@ -230,7 +232,7 @@ class AdasController(
             r.leadDistanceM?.let { "%.1f".format(it) } ?: "-", r.leadSigmaM?.let { "%.1f".format(it) } ?: "-",
             r.leadClosingMps?.let { "%.1f".format(it) } ?: "-", r.ttcSec?.let { "%.1f".format(it) } ?: "-",
             r.fcw, r.vru, r.headway, r.ldw, r.topMessage ?: "-",
-            r.events.joinToString(",") { "${it.type}:${it.severity}" }.ifEmpty { "-" }, objs))
+            diagEvents.toString().trim().ifEmpty { "-" }, objs))
     }
 
     /** Camera geometry for this frame: stream FoV, mount height x auto-cal, IMU pitch/roll. */

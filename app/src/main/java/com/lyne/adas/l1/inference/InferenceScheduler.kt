@@ -67,7 +67,8 @@ class InferenceScheduler(
             val laneCad = profile.laneCadence * cadenceMultiplier
             val signCad = profile.signCadence * cadenceMultiplier
 
-            val detections = if (frame.frameId % objCad == 0L) {
+            val runObj = frame.frameId % objCad == 0L
+            val detections = if (runObj) {
                 val s = System.nanoTime()
                 val d = detectors.obj.detect(frame)
                 perf.stage("object", System.nanoTime() - s)
@@ -96,6 +97,9 @@ class InferenceScheduler(
                 ranSign = true
             }
 
+            // Frames where the object model was skipped (thermal cadence) are NOT fusion frames:
+            // feeding them as "no detections" made every track register a miss and inflated FPS.
+            if (!runObj) return
             onResult(
                 Perception(
                     frameId = frame.frameId,
