@@ -17,6 +17,12 @@ No cloud, no account, works offline. One APK that tunes itself from a 2 GB budge
 
 [**Website**](https://sherin-sef-ai.github.io/Lyne-ADAS/) · [**Download APK**](https://github.com/Sherin-SEF-AI/Lyne-ADAS/releases/latest) · [**Architecture**](ARCHITECTURE.md) · [**Models**](models/README.md) · [**Validation**](VALIDATION.md) · [**Safety**](#safety-and-limitations)
 
+<br>
+
+<img src="docs/img/drive-keep-distance.jpg" width="820" alt="Lyne HUD on a real drive in Bengaluru: KEEP DISTANCE warning 6 m behind a car at 35 km/h, headway 0.7 s">
+
+<sub>Real drive, Bengaluru · Galaxy A17 (Tier B) · number plates blurred</sub>
+
 </div>
 
 ---
@@ -26,6 +32,24 @@ No cloud, no account, works offline. One APK that tunes itself from a 2 GB budge
 Lyne is a **warning-only (Level 1) driver assistance system**. Mount the phone on the windshield and it watches
 the road: vehicles you are closing on, pedestrians and riders in your path, tailgating, lane drift and speed
 limits. Every model runs on the phone. Nothing leaves the device.
+
+## On the road
+
+Screen recordings from a 9.5-minute city drive in Bengaluru on a budget phone (Galaxy A17, Tier B, NNAPI),
+running at 4–6 fps even while the phone was thermally throttled.
+
+| | |
+|---|---|
+| <img src="docs/img/drive-vehicle-ahead.jpg" alt="VEHICLE AHEAD warning for a car cutting in at 10 m, TTC 1.6 s"> | <img src="docs/img/drive-auto-bus.jpg" alt="Auto-rickshaw and bus alongside, lead car at 14 m ±1"> |
+| **Cut-in.** A car cuts in at 10 m; TTC 1.6 s triggers the caution. | **Mixed traffic.** Only the car in your path is the lead (14 m ±1). |
+| <img src="docs/img/drive-following.jpg" alt="Following at 20 m ±2, TTC 6.4 s, headway 2.6 s, no warning"> | <img src="docs/img/drive-stop-go.jpg" alt="Stop and go at 15 km/h, lead 7 m ±1, headway 1.6 s"> |
+| **Relaxed following.** 20 m ±2, headway 2.6 s, so it stays quiet. | **Stop and go.** 7 m ±1 at 15 km/h; close but safe at that speed. |
+
+The same drive exposed a bug: a false "car" detection on the dashboard held the lead at 1 m for the first
+three minutes. It's fixed (range expires after 0.8 s without a measurement and dashboard boxes are ignored,
+with regression tests). The general-purpose detector also sometimes labels auto-rickshaws as buses and
+riders as pedestrians, which is what the Indian-roads model on the roadmap is for. Real drives find what
+simulations miss, so please share yours.
 
 ## v2: accuracy first
 
@@ -175,7 +199,8 @@ Conversion scripts and an India Driving Dataset fine-tuning recipe are in [model
 - [x] IMU mount estimation and traffic-based auto-calibration
 - [x] Event dashcam, trip history, accuracy CSV, voice alerts
 - [ ] Brake-light detection as an early lead-deceleration cue
-- [ ] IDD fine-tuned detector and segmentation weights (auto-rickshaws, animals)
+- [x] Road-tested in Bengaluru traffic; fixes for low-fps tracking, duplicate boxes and stale range
+- [ ] Indian-roads detector (auto-rickshaws, riders, animals) trained on openly licensed dashcam data
 - [ ] Public real-world accuracy dataset (radar-referenced)
 - [ ] CI with the simulation suite on every PR
 
