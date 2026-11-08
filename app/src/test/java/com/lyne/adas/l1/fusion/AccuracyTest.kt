@@ -192,6 +192,18 @@ class AccuracyTest {
         assertEquals(0, fcw)
     }
 
+    /** Budget-phone frame rate: a car overtaking us across the frame must keep ONE track id. */
+    @Test fun trackSurvivesFastLateralMotionAt7fps() {
+        val proj = Projector(seed = 31)
+        val car = SimObject(z = 12f, x = -5f, width = 1.8f, height = 1.5f)
+        val ids = HashSet<Int>()
+        runSim(proj, listOf(car), 3f, 7f, step = { dt, _ -> car.x += 3.5f * dt; car.z += 2f * dt; 20f }) { _, r ->
+            r.objects.forEach { ids += it.id }
+        }
+        println("overtaking car at 7 fps: track ids used = ${ids.size}")
+        assertTrue("expected 1 track id, got ${ids.size}", ids.size <= 1)
+    }
+
     @Test fun pedestrianWhileStoppedIsNotAnAlarm() {
         val proj = Projector(seed = 2)
         val ped = SimObject(z = 6f, x = 0f, width = 0.5f, height = 1.7f, cls = ObjectClass.PEDESTRIAN)

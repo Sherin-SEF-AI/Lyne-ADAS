@@ -48,8 +48,33 @@ class Track(val id: Int, cls: ObjectClass, box: BBox, score: Float, nowNs: Long)
     val confirmed: Boolean get() = hits >= 3
     fun ageSec(nowNs: Long): Float = (nowNs - firstSeenNs) / 1e9f
 
+    // Image-plane motion (normalized units / s) of the box centre and log-width, for prediction.
+    private var vx = 0f; private var vy = 0f; private var vs = 0f
+
+    /**
+     * Where this box should be at [nowNs], assuming its on-screen motion continues. At budget-phone
+     * frame rates (6-10 fps) a passing car can move more than its own width between frames; matching
+     * against the last box then fails and the track restarts, losing all its range/TTC history.
+     */
+    fun predicted(nowNs: Long): BBox {
+        val dt = ((nowNs - lastMatchNs) / 1e9f).coerceIn(0f, 0.5f)
+        if (dt == 0f || hits < 2) return box
+        val cx = box.cx + vx * dt; val cy = box.cy + vy * dt
+        val k = kotlin.math.exp(vs * dt)
+        val hw = box.width * k / 2f; val hh = box.height * k / 2f
+        return BBox(cx - hw, cy - hh, cx + hw, cy + hh)
+    }
+
     fun matched(det: Detection, nowNs: Long) {
         val b = det.box
+        val dtm = (nowNs - lastMatchNs) / 1e9f
+        if (dtm in 0.01f..0.6f) {
+            val a = 0.5f
+            vx += a * ((b.cx - box.cx) / dtm - vx)
+            vy += a * ((b.cy - box.cy) / dtm - vy)
+            vs += a * (kotlin.math.ln(b.width.coerceAtLeast(1e-3f) / box.width.coerceAtLeast(1e-3f)) / dtm - vs)
+            vx = vx.coerceIn(-2f, 2f); vy = vy.coerceIn(-1f, 1f); vs = vs.coerceIn(-3f, 3f)
+        }
         rawBox = b
         val a = SMOOTH
         box = BBox(
@@ -154,7 +179,7 @@ class ObjectTracker(
                     if (matchedDet[di]) continue
                     val d = detections[di]
                     if (!compatible(t.cls, d.cls)) continue
-                    val s = matchScore(t.box, d.box)
+                    val s = matchScore(t.predicted(nowNs), d.box)
                     if (s > best) { best = s; bt = ti; bd = di }
                 }
             }
@@ -192,8 +217,8 @@ class ObjectTracker(
         val maxW = maxOf(t.width, d.width, 1e-3f)
         val dist = sqrt((t.cx - d.cx) * (t.cx - d.cx) + (t.cy - d.cy) * (t.cy - d.cy))
         val ratio = d.width / t.width.coerceAtLeast(1e-4f)
-        if (dist < 0.6f * maxW && ratio in 0.67f..1.5f && abs(t.cy - d.cy) < 0.6f * maxOf(t.height, d.height)) {
-            return 0.2f * (1f - dist / (0.6f * maxW))
+        if (dist < 0.9f * maxW && ratio in 0.6f..1.65f && abs(t.cy - d.cy) < 0.7f * maxOf(t.height, d.height)) {
+            return 0.2f * (1f - dist / (0.9f * maxW))
         }
         return 0f
     }
