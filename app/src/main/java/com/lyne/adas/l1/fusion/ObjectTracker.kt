@@ -97,6 +97,10 @@ class Track(val id: Int, cls: ObjectClass, box: BBox, score: Float, nowNs: Long)
         val dt = if (lastStepNs == 0L) 0f else (nowNs - lastStepNs) / 1e9f
         lastStepNs = nowNs
         kalman.predict(dt)
+        // A track kept alive by boxes we can't range (cut off by the frame edges, e.g. a false
+        // detection on the dashboard) must not coast on an old distance indefinitely: drop the range
+        // so it can never become the lead on stale data.
+        if (kalman.initialized && nowNs - lastMeasNs > STALE_RANGE_NS) { kalman.reset(); scaleRate.reset() }
         if (!fresh) return
 
         val b = rawBox
@@ -107,6 +111,7 @@ class Track(val id: Int, cls: ObjectClass, box: BBox, score: Float, nowNs: Long)
         if (RangeEstimator.measure(cls, b, geom, inputPx, learnedWidthM, learnedRelSigma, meas)) {
             // Kalman sees only the random part; bias (pitch, prior) is constant and would just add lag.
             kalman.update(meas.inv, meas.invJitter.coerceAtLeast(0.01f * meas.inv))
+            lastMeasNs = nowNs
             biasInvSigma = sqrt((meas.invSigma * meas.invSigma - meas.invJitter * meas.invJitter).coerceAtLeast(0f))
             learnWidth(geom, inputPx)
         }
@@ -133,6 +138,7 @@ class Track(val id: Int, cls: ObjectClass, box: BBox, score: Float, nowNs: Long)
     }
 
     private var biasInvSigma = 0f
+    private var lastMeasNs = nowNs
     /** Total 1-sigma distance uncertainty: filter variance plus the cues' systematic part. */
     val sigmaM: Float get() {
         val q = kalman.q
@@ -146,7 +152,10 @@ class Track(val id: Int, cls: ObjectClass, box: BBox, score: Float, nowNs: Long)
     /** Closing speed (m/s, + = approaching). */
     val closingMps: Float get() = -kalman.v
 
-    companion object { private const val SMOOTH = 0.55f }
+    companion object {
+        private const val SMOOTH = 0.55f
+        private const val STALE_RANGE_NS = 800_000_000L
+    }
 }
 
 /**
@@ -168,6 +177,8 @@ class ObjectTracker(
         val nd = detections.size.coerceAtMost(matchedDet.size)
         java.util.Arrays.fill(matchedTrack, false)
         java.util.Arrays.fill(matchedDet, false)
+        // Dashboard/bonnet boxes neither feed nor spawn tracks.
+        for (di in 0 until nd) if (isEgoArtifact(detections[di].box)) matchedDet[di] = true
 
         while (true) {
             var best = 0.05f
@@ -242,6 +253,13 @@ class ObjectTracker(
     }
 
     fun reset() { tracks.clear() }
+
+    /**
+     * A box lying entirely in the bottom strip of the frame and touching its bottom edge is the
+     * dashboard, bonnet or a reflection in the windshield, not a road user: anything near enough to
+     * reach the bottom edge also rises well above it.
+     */
+    private fun isEgoArtifact(b: BBox): Boolean = b.bottom >= 0.95f && b.top >= 0.78f
 
     companion object { const val MAX_TRACKS = 48 }
 }
