@@ -166,7 +166,14 @@ class FusionEngine(
                 val half = RangeEstimator.widthPrior(t.cls) / 2f
                 val inEgo = PathIntrusion.overlapM(t.lateralM, half, center, PathIntrusion.EGO_HALF_M + 0.3f) > 0f
                 val inWide = PathIntrusion.overlapM(t.lateralM, half, center, PathIntrusion.EGO_HALF_M + 1.5f) > 0f
-                val s = PathIntrusion.vruSeverity(d, speedMps, inEgo, inWide)
+                // Same fused looming + range-rate estimate as FCW; Kalman alone lags at low fps.
+                val ft = fusedTtc(t)
+                val closing = when {
+                    ft.valid -> ft.lambda * d
+                    t.kalman.updates >= 4 -> t.closingMps
+                    else -> Float.NaN
+                }
+                val s = PathIntrusion.vruSeverity(d, speedMps, closing, inEgo, inWide)
                 if (s.ordinal > vruRaw.ordinal) { vruRaw = s; vruBox = t.box; vruDist = d }
             }
         }

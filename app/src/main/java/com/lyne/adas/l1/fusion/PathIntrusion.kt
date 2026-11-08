@@ -23,17 +23,36 @@ object PathIntrusion {
         minOf(objLateralM + objHalfWidthM, pathCenterM + halfM) - maxOf(objLateralM - objHalfWidthM, pathCenterM - halfM)
 
     /**
-     * Vulnerable-road-user severity from range, time-to-reach at ego speed and corridor overlap.
-     * Below walking pace (stopped at a crossing) it stays informational: no beeping at red lights.
+     * Vulnerable-road-user severity from range, the measured closing speed and corridor overlap.
+     *
+     * Time-to-reach uses the track's own closing speed (Kalman), not just ego speed: a pedestrian
+     * whose range stays constant is walking with traffic or on the pavement and is not a collision
+     * threat, while a real one in our path closes at roughly our speed. Without enough track history
+     * the alert is capped at CAUTION. Below walking pace (stopped at a crossing) it stays informational.
+     *
+     * @param closingMps track closing speed (+ = approaching) or NaN while unknown
      */
-    fun vruSeverity(distanceM: Float, egoSpeedMps: Float, inEgo: Boolean, inWide: Boolean): Severity {
+    fun vruSeverity(distanceM: Float, egoSpeedMps: Float, closingMps: Float, inEgo: Boolean, inWide: Boolean): Severity {
         if (!inWide || distanceM.isNaN()) return Severity.NONE
         val v = if (egoSpeedMps.isNaN()) 6f else egoSpeedMps
         if (v < 1.5f) return if (distanceM < 12f) Severity.INFO else Severity.NONE
-        val ttr = distanceM / v
+        if (closingMps.isNaN()) {
+            // Young track: distance-only, never more than a caution.
+            return when {
+                inEgo && (distanceM < 10f || distanceM / v < 2.5f) -> Severity.CAUTION
+                distanceM < 25f -> Severity.INFO
+                else -> Severity.NONE
+            }
+        }
+        // Not approaching, or "approaching" faster than physically possible (noise): informational.
+        if (closingMps < maxOf(1.0f, 0.35f * v) || closingMps > v + 3f) return if (distanceM < 25f) Severity.INFO else Severity.NONE
+        // Pedestrians/riders move at <= ~3 m/s, so once we are clearly closing on one, the true closing
+        // speed is within ~2.5 m/s of our own; the measured value lags on small, far boxes at low fps.
+        val effClosing = maxOf(closingMps, v - 2.5f)
+        val ttr = distanceM / effClosing
         return when {
-            inEgo && (distanceM < 5f || ttr < 1.6f) -> Severity.CRITICAL
-            (inEgo && (distanceM < 12f || ttr < 3.0f)) || (distanceM < 7f) -> Severity.CAUTION
+            inEgo && (ttr < 1.6f || distanceM < 4f) -> Severity.CRITICAL
+            (inEgo && ttr < 3.0f) || (ttr < 1.8f) -> Severity.CAUTION
             distanceM < 25f -> Severity.INFO
             else -> Severity.NONE
         }

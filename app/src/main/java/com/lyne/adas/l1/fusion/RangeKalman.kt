@@ -55,7 +55,7 @@ class RangeKalman(
         if (!initialized) {
             q = z; qd = 0f
             p00 = r
-            val s = 4f * z * z // closing speed unknown: +-4 m/s  ->  q' = c q^2
+            val s = 12f * z * z // closing speed unknown: +-12 m/s (urban closing speeds)  ->  q' = c q^2
             p11 = s * s; p01 = 0f
             updates = 1
             return true

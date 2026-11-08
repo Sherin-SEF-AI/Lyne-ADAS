@@ -234,10 +234,36 @@ class AccuracyTest {
         assertTrue("FCW must fire despite duplicate-class detections", !cautionAt.isNaN() && cautionAt > 0.8f)
     }
 
+    private val VRU_ONLY = FeatureFlags(fcw = false, vru = true, ldw = false, headway = false, tsr = false)
+
+    /** Regression (video bench test): a pedestrian holding a constant 8 m gap is not a threat. */
+    @Test fun pedestrianAtConstantRangeIsNotCritical() {
+        val proj = Projector(seed = 41)
+        val ped = SimObject(z = 8f, x = 0.3f, width = 0.5f, height = 1.7f, cls = ObjectClass.PEDESTRIAN)
+        val engine = FusionEngine(AdasConfig.DEFAULT, VRU_ONLY, autoCalEnabled = false)
+        val events = runSim(proj, listOf(ped), 10f, 8f, engine, step = { _, _ -> 14f })
+        val crit = events.count { it.type == AlertType.VRU && it.severity == Severity.CRITICAL }
+        println("pedestrian at constant 8 m: VRU critical events=$crit")
+        assertEquals(0, crit)
+    }
+
+    /** A pedestrian standing in our lane while we approach at 36 km/h: must reach CRITICAL in time. */
+    @Test fun pedestrianInPathWarnsInTime() {
+        val proj = Projector(seed = 43)
+        val ped = SimObject(z = 35f, x = 0.2f, width = 0.5f, height = 1.7f, cls = ObjectClass.PEDESTRIAN)
+        val engine = FusionEngine(AdasConfig.DEFAULT, VRU_ONLY, autoCalEnabled = false)
+        var critAt = Float.NaN
+        runSim(proj, listOf(ped), 3.4f, 8f, engine, step = { dt, _ -> ped.z -= 10f * dt; 10f }) { _, r ->
+            if (critAt.isNaN() && r.vru == Severity.CRITICAL) critAt = ped.z / 10f
+        }
+        println("pedestrian in path at 36 km/h: VRU critical at real time-to-reach=$critAt s")
+        assertTrue(critAt > 0.8f)
+    }
+
     @Test fun pedestrianWhileStoppedIsNotAnAlarm() {
         val proj = Projector(seed = 2)
         val ped = SimObject(z = 6f, x = 0f, width = 0.5f, height = 1.7f, cls = ObjectClass.PEDESTRIAN)
-        val engine = FusionEngine(AdasConfig.DEFAULT, FeatureFlags(fcw = false, vru = true, ldw = false, headway = false, tsr = false), autoCalEnabled = false)
+        val engine = FusionEngine(AdasConfig.DEFAULT, VRU_ONLY, autoCalEnabled = false)
         val events = runSim(proj, listOf(ped), 10f, 15f, engine, step = { dt, _ -> ped.x = (ped.x + 1.2f * dt); 0f })
         assertEquals(0, events.count { it.type == AlertType.VRU })
     }
