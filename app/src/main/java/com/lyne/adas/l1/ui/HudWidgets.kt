@@ -48,6 +48,7 @@ fun StatusStrip(state: AdasUiState) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Box(Modifier.size(8.dp).background(if (live) p.ok else p.caution, CircleShape))
             Text(if (live) "LIVE" else "DEMO", color = p.text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            if (state.videoTest) Text("VIDEO TEST", color = p.caution, fontSize = 11.sp, fontWeight = FontWeight.Black)
             Text("· TIER ${state.tier.name} · ${state.perf?.backend?.name ?: "--"}", color = p.textDim, fontSize = 11.sp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

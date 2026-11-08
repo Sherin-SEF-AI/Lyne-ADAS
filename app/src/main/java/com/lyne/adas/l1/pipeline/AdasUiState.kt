@@ -19,6 +19,7 @@ data class AdasUiState(
     val usingStub: Boolean = true, // object detector is a stub (no real weights)
     val signStub: Boolean = true,  // sign classifier is a stub (no speed-limit model)
     val debugInject: Boolean = false,
+    val videoTest: Boolean = false,
     val muted: Boolean = false,
     val intrinsics: CameraIntrinsics = CameraIntrinsics.DEFAULT,
     val calibrated: Boolean = false,

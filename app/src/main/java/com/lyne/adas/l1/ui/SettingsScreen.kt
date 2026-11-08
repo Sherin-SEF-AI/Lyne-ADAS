@@ -86,6 +86,23 @@ fun SettingsScreen(
             }
         }
 
+        Card("Video test (bench)") {
+            SwitchRow(
+                "Video test mode",
+                "Point the phone at driving footage on a screen. Uses an assumed speed instead of GPS, fixed geometry, " +
+                    "and freezes auto-calibration. Warnings and TTC are meaningful; absolute distances are not (unknown video camera).",
+                config.videoTestMode,
+            ) { onApplyConfig(config.copy(videoTestMode = it)) }
+            if (config.videoTestMode) {
+                Text("Assumed speed", color = p.text, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(30, 50, 80, 110).forEach { k ->
+                        Chip("$k km/h", config.videoTestSpeedKph == k) { onApplyConfig(config.copy(videoTestSpeedKph = k)) }
+                    }
+                }
+            }
+        }
+
         Text(
             if (showAdvanced) "▾ Advanced" else "▸ Advanced",
             color = p.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp,

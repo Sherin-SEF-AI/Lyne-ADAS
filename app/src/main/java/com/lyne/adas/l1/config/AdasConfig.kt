@@ -59,6 +59,12 @@ data class AdasConfig(
 
     // --- Debug / dev ---
     val debugInjectSynthetic: Boolean = false,
+    /**
+     * Bench test against recorded driving footage on a screen: assume [videoTestSpeedKph] instead of
+     * GPS, fixed mount geometry instead of the IMU, no yaw, and auto-calibration frozen.
+     */
+    val videoTestMode: Boolean = false,
+    val videoTestSpeedKph: Int = 50,
     val showPerfOverlay: Boolean = false,
     val emitRovixSidecar: Boolean = true,
     val dashcamEnabled: Boolean = false, // feature-flagged OFF by default

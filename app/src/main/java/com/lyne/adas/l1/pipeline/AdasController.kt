@@ -97,6 +97,7 @@ class AdasController(
     private var accuracyLog: AccuracyLogger? = null
     private val rangeCheck = com.lyne.adas.l1.logging.RangeCheck(context)
     private var lastUiPushMs = 0L
+    private var lastDiagMs = 0L
 
     fun start(preview: PreviewView?) {
         if (started) return
@@ -150,7 +151,8 @@ class AdasController(
         val dets = DetectorProvider.build(context, config, profile)
         detectors = dets
         perf.backend = dets.obj.backend
-        fusion = FusionEngine(config, profile.features, calibration.heightScale, calibration.autoCalEnabled)
+        fusion = FusionEngine(config, profile.features, calibration.heightScale,
+            calibration.autoCalEnabled && !config.videoTestMode)
         accuracyLog = if (config.accuracyLog) AccuracyLogger(context) else null
         recorder = RingBufferRecorder(context, config, profile)
         rovix = if (config.emitRovixSidecar)
@@ -172,18 +174,20 @@ class AdasController(
     private fun onPerception(p: Perception) {
         val f = fusion ?: return
         val nowMs = System.currentTimeMillis()
-        val speed = location.speedMps
+        val video = config.videoTestMode
+        val speed = if (video) config.videoTestSpeedKph / 3.6f else location.speedMps
         motion.longAccel = location.longAccel
         val result = f.update(
             p = p,
             speedMps = speed,
-            yawRate = if (motion.hasGyro) motion.yawRate else 0f,
+            yawRate = if (motion.hasGyro && !video) motion.yawRate else 0f,
             geom = geometry(f),
             inputPx = modelInputPx,
             nowMs = nowMs,
         )
         alerts.onResult(result, nowMs)
         accuracyLog?.record(nowMs, result)
+        if (nowMs - lastDiagMs >= 1000L) { lastDiagMs = nowMs; logDiag(result, speed) }
         val rcChanged = rangeCheck.onResult(result, nowMs)
         session?.tick(nowMs, location.speedMps, location.latitude, location.longitude, result.events)
         if (result.topSeverity == com.lyne.adas.l1.fusion.Severity.CRITICAL) recorder?.onEvent()
@@ -214,6 +218,21 @@ class AdasController(
         )
     }
 
+    /** 1 Hz pipeline summary for bench/road testing: `adb logcat | grep Lyne/Diag`. */
+    private fun logDiag(r: com.lyne.adas.l1.fusion.FusionResult, speedMps: Float) {
+        val objs = r.objects.joinToString(" ") { o ->
+            "${o.cls.name.take(3)}#${o.id}${if (o.isLead) "*" else ""}" +
+                (o.distanceM?.let { "@%.0f".format(it) } ?: "") + (if (o.inPath) "P" else "")
+        }
+        Log.i("Diag", "fps=%.1f v=%s raw=%d trk=%d lead=%s±%s cl=%s ttc=%s fcw=%s vru=%s hw=%s ldw=%s top=%s ev=%s | %s".format(
+            perf.snapshot().fps, if (speedMps.isNaN()) "NaN" else "%.0f".format(speedMps * 3.6f),
+            r.detections.size, r.objects.size,
+            r.leadDistanceM?.let { "%.1f".format(it) } ?: "-", r.leadSigmaM?.let { "%.1f".format(it) } ?: "-",
+            r.leadClosingMps?.let { "%.1f".format(it) } ?: "-", r.ttcSec?.let { "%.1f".format(it) } ?: "-",
+            r.fcw, r.vru, r.headway, r.ldw, r.topMessage ?: "-",
+            r.events.joinToString(",") { "${it.type}:${it.severity}" }.ifEmpty { "-" }, objs))
+    }
+
     /** Camera geometry for this frame: stream FoV, mount height x auto-cal, IMU pitch/roll. */
     private fun geometry(f: FusionEngine): CameraGeometry {
         val a = analyzer
@@ -223,14 +242,19 @@ class AdasController(
             Log.i(TAG, "stream ${streamW}x$streamH hFov=${streamIntrinsics.horizontalFovDeg} vFov=${streamIntrinsics.verticalFovDeg}")
         }
         val m = motion.mount
-        val pitch = if (m.pitchRad.isNaN()) DEFAULT_PITCH_RAD else m.pitchRad.coerceIn(-0.35f, 0.35f)
-        val pitchSigma = if (m.pitchRad.isNaN()) 0.05f else m.pitchSigma()
+        val video = config.videoTestMode
+        val pitch = when {
+            video -> VIDEO_PITCH_RAD
+            m.pitchRad.isNaN() -> DEFAULT_PITCH_RAD
+            else -> m.pitchRad.coerceIn(-0.35f, 0.35f)
+        }
+        val pitchSigma = if (video || m.pitchRad.isNaN()) 0.05f else m.pitchSigma()
         return CameraGeometry(
             hFovDeg = streamIntrinsics.horizontalFovDeg,
             vFovDeg = streamIntrinsics.verticalFovDeg,
             cameraHeightM = cameraHeightM * f.autoCal.scale,
             pitchRad = pitch,
-            rollTan = m.rollTan.coerceIn(-0.2f, 0.2f),
+            rollTan = if (video) 0f else m.rollTan.coerceIn(-0.2f, 0.2f),
             distanceScale = distanceScale,
             pitchSigmaRad = pitchSigma,
         )
@@ -256,6 +280,7 @@ class AdasController(
             usingStub = detectors?.obj?.isStub ?: true,
             signStub = detectors?.sign?.isStub ?: true,
             debugInject = config.debugInjectSynthetic,
+            videoTest = config.videoTestMode,
             muted = alerts.muted,
             intrinsics = effIntrinsics,
             calibrated = calibration.isCalibrated,
@@ -419,8 +444,10 @@ class AdasController(
         // Persist the finished drive for trip history.
         session?.let { s -> if (s.hasData) runCatching { tripStore.save(s.toTrip(System.currentTimeMillis())) } }
         session = null
-        fusion?.let { f -> if (calibration.autoCalEnabled) calibration.heightScale = f.autoCal.scale }
-        motion.mount.pitchRad.takeIf { !it.isNaN() }?.let { calibration.lastPitchRad = it; calibration.lastRollTan = motion.mount.rollTan }
+        if (!config.videoTestMode) { // never learn calibration from a phone aimed at a monitor
+            fusion?.let { f -> if (calibration.autoCalEnabled) calibration.heightScale = f.autoCal.scale }
+            motion.mount.pitchRad.takeIf { !it.isNaN() }?.let { calibration.lastPitchRad = it; calibration.lastRollTan = motion.mount.rollTan }
+        }
         accuracyLog?.close(); accuracyLog = null
         recorder?.stop(); recorder = null
         camera.stop()
@@ -456,6 +483,8 @@ class AdasController(
         private const val TAG = "AdasController"
         /** Typical windshield mount looks ~3 deg down until the IMU says otherwise. */
         private const val DEFAULT_PITCH_RAD = 0.05f
+        /** Dashcam footage usually has the horizon slightly above centre. */
+        private const val VIDEO_PITCH_RAD = 0.03f
     }
 }
 
