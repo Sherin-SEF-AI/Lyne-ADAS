@@ -204,6 +204,36 @@ class AccuracyTest {
         assertTrue("expected 1 track id, got ${ids.size}", ids.size <= 1)
     }
 
+    /**
+     * Scenario coverage (from the video bench test): the detector reports one truck as BOTH truck and
+     * bus. FCW must still fire. Note: this simulation does not reproduce the on-device lead flipping
+     * (that needed track churn); class-group NMS, duplicate-track merging and same-vehicle evidence
+     * keeping address it on device.
+     */
+    @Test fun duplicateClassDetectionsStillWarn() {
+        val proj = Projector(seed = 8)
+        val truck = SimObject(z = 30f, x = 0f, width = 2.4f, height = 3f, cls = ObjectClass.TRUCK)
+        val engine = FusionEngine(AdasConfig.DEFAULT, FCW_ONLY, autoCalEnabled = false)
+        var leadV = 20f; var t = 0f; var frame = 0L; var cautionAt = Float.NaN
+        val rnd = java.util.Random(3)
+        while (t < 6f) {
+            val dets = proj.detect(listOf(truck)).flatMap { d ->
+                // Same box, second class, slightly jittered: what YOLO does on big vehicles.
+                val j = 0.004f
+                listOf(d, d.copy(cls = ObjectClass.BUS, score = d.score * (0.8f + 0.3f * rnd.nextFloat()),
+                    box = com.lyne.adas.l1.inference.BBox(d.box.left + j, d.box.top, d.box.right - j, d.box.bottom)))
+            }
+            val r = engine.update(perception(frame++, (t * 1e9).toLong(), dets), 20f, 0f, proj.geometry(), proj.inputPx, (t * 1000).toLong())
+            if (cautionAt.isNaN() && r.fcw.ordinal >= Severity.CAUTION.ordinal) cautionAt = truck.z / (20f - leadV)
+            val dt = 1f / 10f
+            if (t > 1f) leadV = (leadV - 5f * dt).coerceAtLeast(0f)
+            truck.z -= (20f - leadV) * dt
+            t += dt
+        }
+        println("duplicate truck/bus detections: caution at real TTC=$cautionAt s")
+        assertTrue("FCW must fire despite duplicate-class detections", !cautionAt.isNaN() && cautionAt > 0.8f)
+    }
+
     @Test fun pedestrianWhileStoppedIsNotAnAlarm() {
         val proj = Projector(seed = 2)
         val ped = SimObject(z = 6f, x = 0f, width = 0.5f, height = 1.7f, cls = ObjectClass.PEDESTRIAN)

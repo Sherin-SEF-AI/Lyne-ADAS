@@ -198,6 +198,9 @@ class ObjectTracker(
             }
             i--
         }
+        // Merge duplicates: two compatible tracks on the same object (e.g. born from a car+truck double
+        // detection) would make the lead flip between them. Keep the one with the longer history.
+        mergeDuplicates()
         for (di in 0 until nd) {
             if (matchedDet[di]) continue
             val d = detections[di]
@@ -205,6 +208,21 @@ class ObjectTracker(
             tracks.add(Track(nextId++, d.cls, d.box, d.score, nowNs))
         }
         return tracks
+    }
+
+    /** Remove the shorter-lived of any two compatible tracks overlapping by IoU >= 0.55. n <= 48. */
+    private fun mergeDuplicates() {
+        var changed = true
+        while (changed) {
+            changed = false
+            outer@ for (i in tracks.indices) for (j in i + 1 until tracks.size) {
+                val ti = tracks[i]; val tj = tracks[j]
+                if (!compatible(ti.cls, tj.cls) || ti.box.iou(tj.box) < 0.55f) continue
+                tracks.removeAt(if (ti.hits >= tj.hits) j else i)
+                changed = true
+                break@outer
+            }
+        }
     }
 
     private fun compatible(a: ObjectClass, b: ObjectClass): Boolean =

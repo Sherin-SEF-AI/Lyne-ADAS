@@ -38,6 +38,7 @@ class FusionEngine(
     private val stopGate = AlertGate(400L, 300L, rearmMs = 10_000L)
 
     private var leadId = -1
+    private var lastLeadBox: BBox? = null
 
     // Stop-and-go ("traffic moving") state.
     private var stoppedSinceMs = 0L
@@ -55,7 +56,8 @@ class FusionEngine(
         nowMs: Long,
     ): FusionResult {
         val speedKph = if (speedMps.isNaN()) Float.NaN else speedMps * 3.6f
-        val lowThr = config.objectScoreThreshold
+        // Screen footage (moire, glare) lowers detector confidence; bench mode spawns tracks a bit earlier.
+        val lowThr = if (config.videoTestMode) config.objectScoreThreshold * 0.8f else config.objectScoreThreshold
         val tracks = tracker.update(p.detections, lowThr, p.timestampNs)
         val nowNs = p.timestampNs
 
@@ -95,8 +97,14 @@ class FusionEngine(
         val prev = tracks.firstOrNull { it.id == leadId && it.inPath && it.misses <= 2 && !it.distanceM.isNaN() }
         if (prev != null && lead != null && prev !== lead && lead.distanceM > prev.distanceM - 3f) lead = prev
         val newLeadId = lead?.id ?: -1
-        if (newLeadId != leadId) { fcwGate.resetEvidence(); headwayGate.resetEvidence() }
+        if (newLeadId != leadId) {
+            // Only a genuinely different vehicle has to earn its own alert; an id swap on the same
+            // object (overlapping boxes) keeps the evidence gathered so far.
+            val same = lead != null && lastLeadBox != null && lead.box.iou(lastLeadBox!!) > 0.3f
+            if (!same) { fcwGate.resetEvidence(); headwayGate.resetEvidence() }
+        }
         leadId = newLeadId
+        lastLeadBox = lead?.box
         lead?.isLead = true
 
         var leadDist: Float? = null; var leadSigma: Float? = null; var leadConf: Float? = null
@@ -136,7 +144,7 @@ class FusionEngine(
             if (egoKnown && speedMps >= 2f) {
                 val hw = d / speedMps
                 headwaySec = hw
-                if (features.headway && !config.videoTestMode && speedMps >= MIN_HEADWAY_SPEED_MPS && relSigma < 0.3f && lead.confirmed) {
+                if (features.headway && speedMps >= MIN_HEADWAY_SPEED_MPS && relSigma < 0.3f && lead.confirmed) {
                     headwayRaw = when {
                         hw < hwCrit -> Severity.CRITICAL
                         hw < hwWarn -> Severity.CAUTION

@@ -117,10 +117,18 @@ class ObjectDetector(
             for (j in i + 1 until dets.size) {
                 if (removed[j]) continue
                 val b = dets[j]
-                if (a.cls == b.cls && a.box.iou(b.box) > config.nmsIouThreshold) removed[j] = true
+                // Vehicles are NMS'd as one group: the model often scores the same truck as both "truck"
+                // and "bus" (or an SUV as car/truck); class-wise NMS kept both and split the track.
+                if (nmsGroup(a.cls) == nmsGroup(b.cls) && a.box.iou(b.box) > config.nmsIouThreshold) removed[j] = true
             }
         }
         return keep
+    }
+
+    private fun nmsGroup(c: ObjectClass): Int = when {
+        c.isVehicle -> 1
+        c == ObjectClass.MOTORCYCLE || c == ObjectClass.BICYCLE -> 2
+        else -> 10 + c.ordinal
     }
 
     override fun close() = engine.close()
