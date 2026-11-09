@@ -19,9 +19,9 @@ No cloud, no account, works offline. One APK that tunes itself from a 2 GB budge
 
 <br>
 
-<img src="docs/img/drive-keep-distance.jpg" width="820" alt="Lyne HUD on a real drive in Bengaluru: KEEP DISTANCE warning 6 m behind a car at 35 km/h, headway 0.7 s">
+<a href="https://youtu.be/DacNmFmlw9k"><img src="docs/img/youtube-thumb.jpg" width="820" alt="Watch Lyne ADAS on a real drive in Bengaluru (YouTube)"></a>
 
-<sub>Real drive, Bengaluru · Galaxy A17 (Tier B) · number plates blurred</sub>
+<sub>▶ <a href="https://youtu.be/DacNmFmlw9k"><b>Watch the 3-minute drive video</b></a> · Real drive, Bengaluru · Galaxy A17 (Tier B) · number plates blurred</sub>
 
 </div>
 

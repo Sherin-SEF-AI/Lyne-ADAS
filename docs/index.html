@@ -206,6 +206,12 @@ footer nav{display:flex;flex-wrap:wrap;gap:18px}
 .live::before{content:"";display:inline-block;vertical-align:middle;margin-right:7px;width:7px;height:7px;border-radius:50%;background:var(--gr);animation:pulse 2.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
 
+/* video */
+.vid{position:relative;aspect-ratio:16/9;border-radius:18px;overflow:hidden;border:1px solid var(--line2);background:#000;box-shadow:0 30px 70px rgba(0,0,0,.55)}
+.vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.vid-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 20px;margin-top:16px;color:var(--mut);font-size:.92rem}
+.vid-meta a{font-weight:600}
+
 /* field strip */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:36px}
 @media (max-width:820px){.stats{grid-template-columns:repeat(2,1fr)}}
@@ -272,6 +278,7 @@ dialog.lb img{display:block;width:100%;height:auto}
       Lyne ADAS <small>v2.0</small>
     </a>
     <nav aria-label="Primary">
+      <a href="#watch">Video</a>
       <a href="#drive">On the road</a>
       <a href="#v2">Accuracy</a>
       <a href="#features">Features</a>
@@ -323,6 +330,18 @@ dialog.lb img{display:block;width:100%;height:auto}
     </figure>
   </div>
 </div>
+
+<section id="watch" aria-labelledby="wh">
+  <div class="wrap">
+    <span class="eyebrow">Watch</span>
+    <h2 id="wh">Three minutes in Bengaluru traffic.</h2>
+    <p class="sub">A real drive on a budget phone: following distance, cut-ins, auto-rickshaws, a metro underpass, and a bug the drive exposed and v2.0 fixed.</p>
+    <div class="vid">
+      <iframe src="https://www.youtube-nocookie.com/embed/DacNmFmlw9k?rel=0" title="Lyne ADAS on a real drive in Bengaluru" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+    </div>
+    <div class="vid-meta"><span>Galaxy A17 (Tier B) · screen recording of the live HUD · number plates blurred</span><a href="https://youtu.be/DacNmFmlw9k" rel="noopener">Watch on YouTube</a></div>
+  </div>
+</section>
 
 <section id="drive" class="alt" aria-labelledby="dh">
   <div class="wrap">
