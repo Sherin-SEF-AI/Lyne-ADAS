@@ -15,6 +15,8 @@ data class TrackedObject(
     val closingMps: Float?,
     val inPath: Boolean,
     val isLead: Boolean,
+    /** Lead only: brake lights on. */
+    val braking: Boolean = false,
 )
 
 /** Everything the HUD needs for one frame, plus the discrete events emitted this frame. */
@@ -52,6 +54,8 @@ data class FusionResult(
     val animal: Severity = Severity.NONE,
     /** Scene is dark (night): range sigma inflated and FCW caution comes earlier. */
     val lowLight: Boolean = false,
+    /** Brake lights detected on the lead vehicle (classical red-lamp cue). */
+    val leadBraking: Boolean = false,
 ) {
     companion object {
         fun empty(frameId: Long, lane: LaneResult) = FusionResult(

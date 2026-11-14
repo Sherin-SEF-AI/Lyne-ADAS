@@ -45,4 +45,6 @@ data class AdasUiState(
     // Driver-safety guidance
     val cameraHealth: com.lyne.adas.l1.camera.CameraHealth = com.lyne.adas.l1.camera.CameraHealth(),
     val deviceHints: List<com.lyne.adas.l1.perf.DeviceHint> = emptyList(),
+    /** Speed is held/dead-reckoned through a GPS outage, not a fresh GPS reading. */
+    val speedEstimated: Boolean = false,
 )

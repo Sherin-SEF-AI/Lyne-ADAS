@@ -46,15 +46,20 @@ fun ArcGauge(
 }
 
 @Composable
-fun SpeedGauge(speedKph: Float?, limitKph: Int?, overspeed: Severity, modifier: Modifier = Modifier) {
+fun SpeedGauge(
+    speedKph: Float?, limitKph: Int?, overspeed: Severity, modifier: Modifier = Modifier,
+    /** Held/dead-reckoned through a GPS outage: shown dimmed with a "~". */
+    estimated: Boolean = false,
+) {
     val p = palette()
     val maxK = ((limitKph?.times(1.6f)) ?: 120f).coerceAtLeast(80f)
     val frac = (speedKph ?: 0f) / maxK
     val color = if (overspeed != Severity.NONE) p.severityColor(overspeed) else p.accent
     ArcGauge(frac, color, p.surfaceAlt, modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(speedKph?.let { it.toInt().toString() } ?: "--", color = p.text, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("km/h", color = p.textDim, fontSize = 10.sp)
+            val shown = speedKph?.let { if (estimated) "~${it.toInt()}" else it.toInt().toString() } ?: "--"
+            Text(shown, color = if (estimated) p.textDim else p.text, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text(if (estimated && speedKph != null) "km/h est" else "km/h", color = p.textDim, fontSize = 10.sp)
             Text(limitKph?.let { "LIM $it" } ?: "LIM --", color = if (overspeed != Severity.NONE) color else p.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }

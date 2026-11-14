@@ -111,6 +111,7 @@ class InferenceScheduler(
                     ranLaneThisFrame = false, // lane runs async on its own thread
                     ranSignThisFrame = ranSign,
                     meanLuma = (detectors.obj as? ObjectDetector)?.lastMeanLuma ?: Float.NaN,
+                    frame = frame,
                 )
             )
             perf.frameDone(System.nanoTime() - t0)

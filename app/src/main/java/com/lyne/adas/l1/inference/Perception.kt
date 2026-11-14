@@ -15,4 +15,9 @@ data class Perception(
     val ranSignThisFrame: Boolean,
     /** Mean frame luminance 0..1 from the object detector's preprocessing, or NaN if unknown. */
     val meanLuma: Float = Float.NaN,
+    /**
+     * The pooled frame these detections came from. Valid ONLY inside the scheduler's onResult
+     * callback (the bitmap is recycled right after); used for cheap pixel cues such as brake lights.
+     */
+    val frame: CameraFrame? = null,
 )

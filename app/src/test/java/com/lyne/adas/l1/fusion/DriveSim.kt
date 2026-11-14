@@ -76,6 +76,7 @@ fun runSim(
     engine: FusionEngine = FusionEngine(AdasConfig.DEFAULT, FCW_ONLY, autoCalEnabled = false),
     geom: CameraGeometry = proj.geometry(),
     step: (dt: Float, t: Float) -> Float,
+    pixels: LeadPixelSource? = null,
     onFrame: (t: Float, r: FusionResult) -> Unit = { _, _ -> },
 ): List<AdasEvent> {
     val events = ArrayList<AdasEvent>()
@@ -85,11 +86,36 @@ fun runSim(
     while (t < seconds) {
         proj.timeSec = t
         val dets = proj.detect(objs)
-        val r = engine.update(perception(frame, (t * 1e9).toLong(), dets), speed, 0f, geom, proj.inputPx, (t * 1000).toLong())
+        val r = engine.update(perception(frame, (t * 1e9).toLong(), dets), speed, 0f, geom, proj.inputPx, (t * 1000).toLong(), pixels)
         events += r.events
         onFrame(t, r)
         t += dt; frame++
         speed = step(dt, t)
     }
     return events
+}
+
+/**
+ * Synthetic rear view of the lead for the brake-light cue: grey body, dark-red tail-lamp housings
+ * at both sides and a small centre lamp; [braking] lights them up. Per-pixel noise included.
+ */
+class SimTailLights(seed: Long = 3L, var braking: Boolean = false) : LeadPixelSource {
+    private val rnd = Random(seed)
+    override fun sample(box: BBox, out: IntArray, cols: Int, rows: Int): Boolean {
+        for (r in 0 until rows) for (c in 0 until cols) {
+            val fx = (c + 0.5f) / cols; val fy = (r + 0.5f) / rows
+            val side = (fx < 0.16f || fx > 0.84f) && fy in 0.32f..0.58f
+            val centre = fx in 0.42f..0.58f && fy < 0.12f
+            var rr: Int; var gg: Int; var bb: Int
+            if (side || centre) {
+                if (braking) { rr = 235; gg = 70; bb = 60 } else { rr = 125; gg = 55; bb = 50 }
+            } else { rr = 105; gg = 105; bb = 110 }
+            val n = (rnd.nextGaussian() * 12).toInt() // brightness noise, then per-channel noise
+            rr = (rr + n + (rnd.nextGaussian() * 8).toInt()).coerceIn(0, 255)
+            gg = (gg + n + (rnd.nextGaussian() * 8).toInt()).coerceIn(0, 255)
+            bb = (bb + n + (rnd.nextGaussian() * 8).toInt()).coerceIn(0, 255)
+            out[r * cols + c] = (0xFF shl 24) or (rr shl 16) or (gg shl 8) or bb
+        }
+        return true
+    }
 }
