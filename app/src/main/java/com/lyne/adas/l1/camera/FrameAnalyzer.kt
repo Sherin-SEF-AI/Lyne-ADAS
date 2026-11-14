@@ -17,10 +17,13 @@ class FrameAnalyzer(
     private val pool: ImageBuffers,
     private val scheduler: InferenceScheduler,
     private val perf: PerfMonitor,
+    /** Optional per-frame image-health hook (camera self-check); called on the analyzer thread. */
+    private val onStats: ((FrameStats) -> Unit)? = null,
 ) : ImageAnalysis.Analyzer {
 
     private val converter = FrameConverter()
     private var frameId = 0L
+    private val stats = FrameStats()
 
     val displayWidth: Int get() = converter.displayWidth
     val displayHeight: Int get() = converter.displayHeight
@@ -29,6 +32,13 @@ class FrameAnalyzer(
         val id = frameId++
         // Sensor exposure timestamp: true inter-frame dt for rate estimates (not processing time).
         val ts = image.imageInfo.timestamp.takeIf { it > 0L } ?: System.nanoTime()
+        if (onStats != null) {
+            try {
+                val plane = image.planes[0]
+                stats.compute(plane.buffer, image.width, image.height, plane.rowStride, plane.pixelStride)
+                onStats.invoke(stats)
+            } catch (t: Throwable) { Log.w("FrameAnalyzer", "stats failed", t) }
+        }
         val dst = pool.acquire()
         if (dst == null) {
             perf.frameDropped()

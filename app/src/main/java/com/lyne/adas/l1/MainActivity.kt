@@ -1,6 +1,8 @@
 package com.lyne.adas.l1
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothManager
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -18,6 +20,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lyne.adas.l1.config.DayNightMode
+import com.lyne.adas.l1.config.SettingsStore
+import com.lyne.adas.l1.startup.CarConnectPolicy
+import com.lyne.adas.l1.startup.CarConnectReceiver
+import com.lyne.adas.l1.ui.BtDeviceChoice
+import com.lyne.adas.l1.ui.CarReminderCard
+import com.lyne.adas.l1.ui.DisclaimerScreen
 import com.lyne.adas.l1.pipeline.AdasController
 import com.lyne.adas.l1.ui.CalibrationScreen
 import com.lyne.adas.l1.ui.HudScreen
@@ -34,6 +42,16 @@ class MainActivity : ComponentActivity() {
     private lateinit var previewView: PreviewView
     private val cameraGranted = mutableStateOf(false)
     private val onboarded = mutableStateOf(false)
+    private val disclaimerOk = mutableStateOf(false)
+
+    // "Remind me when my car connects" (Bluetooth) setting.
+    private lateinit var settings: SettingsStore
+    private val carReminder = mutableStateOf(false)
+    private val carAddress = mutableStateOf<String?>(null)
+    private val carStatus = mutableStateOf<String?>(null)
+
+    private val carPermLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { onCarPermissionsResult() }
 
     private val permLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
@@ -48,6 +66,9 @@ class MainActivity : ComponentActivity() {
         previewView = PreviewView(this).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
         cameraGranted.value = hasCamera()
         onboarded.value = controller.isOnboarded()
+        disclaimerOk.value = !controller.needsDisclaimer()
+        settings = SettingsStore(this)
+        syncCarReminder()
 
         setContent { Root() }
 
@@ -65,11 +86,19 @@ class MainActivity : ComponentActivity() {
             if (!onboarded.value) {
                 OnboardingScreen(
                     cameraGranted = cameraGranted.value,
+                    disclaimerAccepted = disclaimerOk.value,
+                    onAcceptDisclaimer = { controller.acceptDisclaimer(); disclaimerOk.value = true },
                     onRequestPermissions = { requestPermissions() },
                     onFinish = {
                         controller.setOnboarded(); onboarded.value = true; maybeStart()
                     },
                 )
+                return@LyneTheme
+            }
+
+            // A changed safety disclaimer must be re-accepted before the HUD starts.
+            if (!disclaimerOk.value) {
+                DisclaimerScreen(onAccept = { controller.acceptDisclaimer(); disclaimerOk.value = true; maybeStart() })
                 return@LyneTheme
             }
 
@@ -93,6 +122,19 @@ class MainActivity : ComponentActivity() {
                     onTogglePerf = { controller.togglePerf() },
                     onShareAccuracyLog = { controller.shareAccuracyLog() },
                     onClose = { screen = Screen.HUD },
+                    extraCards = {
+                        CarReminderCard(
+                            enabled = carReminder.value,
+                            chosenAddress = carAddress.value,
+                            status = carStatus.value,
+                            pairedDevices = ::pairedDevices,
+                            onToggle = ::setCarReminder,
+                            onChoose = { d ->
+                                settings.carDeviceAddress = d?.address; settings.carDeviceName = d?.name
+                                carAddress.value = d?.address
+                            },
+                        )
+                    },
                 )
                 Screen.CALIB -> CalibrationScreen(
                     state = state,
@@ -151,12 +193,75 @@ class MainActivity : ComponentActivity() {
         if (hasFocus) goImmersive()
     }
 
-    override fun onStart() { super.onStart(); maybeStart() }
+    override fun onStart() { super.onStart(); syncCarReminder(); maybeStart() }
     override fun onStop() { super.onStop(); controller.stop() }
     override fun onDestroy() { super.onDestroy(); controller.release() }
 
     private fun maybeStart() {
-        if (onboarded.value && cameraGranted.value) controller.start(previewView)
+        if (onboarded.value && disclaimerOk.value && cameraGranted.value) controller.start(previewView)
+    }
+
+    // --- Car Bluetooth reminder ---
+
+    private fun missingCarPermissions(): List<String> = CarConnectReceiver.requiredPermissions().filter {
+        ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+    }
+
+    /** Re-check on launch: permissions can be revoked from system settings at any time. */
+    private fun syncCarReminder() {
+        val wanted = settings.carReminder
+        val btOk = CarConnectReceiver.hasBluetoothPermission(this)
+        CarConnectReceiver.setEnabled(this, wanted && btOk)
+        carReminder.value = wanted
+        carAddress.value = settings.carDeviceAddress
+        carStatus.value = when {
+            !wanted -> null
+            !btOk -> "Bluetooth permission is off, so Lyne cannot see your car connect. Allow \"Nearby devices\" for Lyne in system settings."
+            !CarConnectReceiver.canPostNotifications(this) -> "Notifications are blocked for Lyne, so the reminder cannot appear. Allow them in system settings."
+            else -> null
+        }
+    }
+
+    private fun setCarReminder(on: Boolean) {
+        if (!on) {
+            settings.carReminder = false
+            syncCarReminder()
+            return
+        }
+        val missing = missingCarPermissions()
+        if (missing.isEmpty()) enableCarReminder() else carPermLauncher.launch(missing.toTypedArray())
+    }
+
+    private fun onCarPermissionsResult() {
+        when {
+            !CarConnectReceiver.hasBluetoothPermission(this) -> {
+                settings.carReminder = false; syncCarReminder()
+                carStatus.value = "Without the Bluetooth (\"Nearby devices\") permission Lyne cannot tell when your car connects. Reminder left off."
+            }
+            !CarConnectReceiver.canPostNotifications(this) -> {
+                settings.carReminder = false; syncCarReminder()
+                carStatus.value = "Without notification permission the reminder cannot appear. Reminder left off."
+            }
+            else -> enableCarReminder()
+        }
+    }
+
+    private fun enableCarReminder() {
+        CarConnectReceiver.ensureChannel(this)
+        settings.carReminder = true
+        syncCarReminder()
+    }
+
+    /** Paired devices, car stereos / hands-free kits first. Empty without Bluetooth permission. */
+    @SuppressLint("MissingPermission")
+    private fun pairedDevices(): List<BtDeviceChoice> {
+        if (!CarConnectReceiver.hasBluetoothPermission(this)) return emptyList()
+        val adapter = getSystemService(BluetoothManager::class.java)?.adapter ?: return emptyList()
+        return try {
+            adapter.bondedDevices.orEmpty()
+                .sortedWith(compareBy({ !CarConnectPolicy.isCarClass(it.bluetoothClass?.deviceClass) }, { it.name ?: it.address }))
+                .map { BtDeviceChoice(it.name ?: it.address, it.address) }
+        } catch (_: SecurityException) { emptyList() }
     }
 
     private fun hasCamera(): Boolean =

@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lyne.adas.l1.alerts.MutePolicy
 import com.lyne.adas.l1.config.DayNightMode
 import com.lyne.adas.l1.fusion.FusionResult
 import com.lyne.adas.l1.fusion.Severity
@@ -130,7 +131,9 @@ fun ControlBar(
         modifier.padding(10.dp).background(p.chip, RoundedCornerShape(28.dp)).padding(horizontal = 6.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        IconAction(if (state.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, if (state.muted) "Unmute" else "Mute",
+        IconAction(
+            if (state.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+            if (state.muted) "Unmute. ${MutePolicy.MUTE_NOTE}" else "Mute caution sounds. ${MutePolicy.MUTE_NOTE}",
             if (state.muted) p.caution else p.text, onToggleMute)
         IconAction(dnIcon, "Day / night", p.text, onCycleDayNight)
         IconAction(Icons.Filled.Timeline, "Trip", p.text, onOpenSession)

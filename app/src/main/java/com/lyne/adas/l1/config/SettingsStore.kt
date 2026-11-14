@@ -14,6 +14,28 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(K_ONBOARDED, false)
         set(v) = prefs.edit().putBoolean(K_ONBOARDED, v).apply()
 
+    /** Version of the safety disclaimer the user explicitly accepted (0 = never). */
+    var disclaimerAcceptedVersion: Int
+        get() = prefs.getInt(K_DISCLAIMER, 0)
+        set(v) = prefs.edit().putInt(K_DISCLAIMER, v).apply()
+
+    /** "Remind me to start Lyne when my car connects" (Bluetooth). Off by default. */
+    var carReminder: Boolean
+        get() = prefs.getBoolean(K_CAR_REMIND, false)
+        set(v) = prefs.edit().putBoolean(K_CAR_REMIND, v).apply()
+
+    /** Specific car Bluetooth device (address + display name); null = any car-audio device. */
+    var carDeviceAddress: String?
+        get() = prefs.getString(K_CAR_ADDR, null)
+        set(v) = prefs.edit().putString(K_CAR_ADDR, v).apply()
+    var carDeviceName: String?
+        get() = prefs.getString(K_CAR_NAME, null)
+        set(v) = prefs.edit().putString(K_CAR_NAME, v).apply()
+
+    var lastCarNotifyMs: Long
+        get() = prefs.getLong(K_CAR_LAST, 0L)
+        set(v) = prefs.edit().putLong(K_CAR_LAST, v).apply()
+
     var sensitivity: SensitivityPreset
         get() = runCatching { SensitivityPreset.valueOf(prefs.getString(K_SENS, "NORMAL")!!) }.getOrDefault(SensitivityPreset.NORMAL)
         set(v) = prefs.edit().putString(K_SENS, v.name).apply()
@@ -67,6 +89,11 @@ class SettingsStore(context: Context) {
 
     companion object {
         private const val K_ONBOARDED = "onboarded"
+        private const val K_DISCLAIMER = "disclaimer_ver"
+        private const val K_CAR_REMIND = "car_bt_remind"
+        private const val K_CAR_ADDR = "car_bt_addr"
+        private const val K_CAR_NAME = "car_bt_name"
+        private const val K_CAR_LAST = "car_bt_last"
         private const val K_SENS = "sensitivity"
         private const val K_DN = "daynight"
         private const val K_TTC_C = "ttc_caution"
