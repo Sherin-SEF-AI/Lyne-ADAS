@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +33,7 @@ import com.lyne.adas.l1.config.AdasConfig
 import com.lyne.adas.l1.config.DayNightMode
 import com.lyne.adas.l1.config.DeviceTier
 import com.lyne.adas.l1.config.SensitivityPreset
+import com.lyne.adas.l1.logging.CrashReporter
 import com.lyne.adas.l1.pipeline.AdasUiState
 
 @Composable
@@ -84,6 +86,9 @@ fun SettingsScreen(
             SwitchRow("Event sidecar (JSONL)", "One line per warning, exportable from the Trip screen", config.emitRovixSidecar) {
                 onApplyConfig(config.copy(emitRovixSidecar = it))
             }
+            val ctx = LocalContext.current
+            val crashes = remember { CrashReporter.list(ctx).size }
+            if (crashes > 0) PillButton("SHARE CRASH REPORTS ($crashes)", p.accent) { CrashReporter.share(ctx) }
         }
 
         Card("Video test (bench)") {

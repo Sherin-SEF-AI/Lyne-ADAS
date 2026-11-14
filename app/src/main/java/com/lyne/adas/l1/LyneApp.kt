@@ -3,12 +3,15 @@ package com.lyne.adas.l1
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.os.StrictMode
+import com.lyne.adas.l1.logging.CrashReporter
 import com.lyne.adas.l1.logging.Log
 
-/** Application entry: enables StrictMode in debug and logs memory-trim signals for low-RAM tuning. */
+/** Application entry: installs local crash reports, enables StrictMode in debug and logs memory-trim signals. */
 class LyneApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Local-only crash reports (files/crash/); shared only if the user chooses to.
+        CrashReporter.install(this)
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder().detectAll().penaltyLog().build()
