@@ -37,6 +37,7 @@ class VoiceAnnouncer(context: Context) : TextToSpeech.OnInitListener {
             AlertType.OVERSPEED -> speedLimit?.let { "Speed limit $it" } ?: "Slow down"
             AlertType.STOP -> "Stop sign"
             AlertType.LEAD_GO -> "Traffic moving"
+            AlertType.ANIMAL -> "Animal ahead"
         }
         lastSaid[type.ordinal] = now
         val mode = if (severity == Severity.CRITICAL) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD

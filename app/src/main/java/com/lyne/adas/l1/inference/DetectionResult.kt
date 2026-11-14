@@ -2,7 +2,7 @@ package com.lyne.adas.l1.inference
 
 /** Object classes Lyne reasons about. Maps from the model label set in ObjectDetector. */
 enum class ObjectClass {
-    CAR, TRUCK, BUS, MOTORCYCLE, BICYCLE, PEDESTRIAN, AUTORICKSHAW, STOP_SIGN, UNKNOWN;
+    CAR, TRUCK, BUS, MOTORCYCLE, BICYCLE, PEDESTRIAN, AUTORICKSHAW, STOP_SIGN, ANIMAL, UNKNOWN;
 
     val isVehicle: Boolean get() = this == CAR || this == TRUCK || this == BUS || this == AUTORICKSHAW
     val isVru: Boolean get() = this == PEDESTRIAN || this == BICYCLE || this == MOTORCYCLE

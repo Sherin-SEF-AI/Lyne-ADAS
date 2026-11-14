@@ -48,6 +48,10 @@ data class FusionResult(
     val horizonRightY: Float = Float.NaN,
     val heightScale: Float = 1f,
     val autoCalConfidence: Float = 0f,
+    /** Animal-ahead alert level (gated). */
+    val animal: Severity = Severity.NONE,
+    /** Scene is dark (night): range sigma inflated and FCW caution comes earlier. */
+    val lowLight: Boolean = false,
 ) {
     companion object {
         fun empty(frameId: Long, lane: LaneResult) = FusionResult(

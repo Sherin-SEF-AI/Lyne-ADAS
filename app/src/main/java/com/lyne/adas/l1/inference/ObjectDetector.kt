@@ -30,6 +30,8 @@ class ObjectDetector(
     private val pre = TensorPreprocessor(engine.inputShape, engine.inputDataType, engine.inputScale, engine.inputZeroPoint)
 
     private val labels: List<String> = ModelAssets.loadLabels(context, labelsPath)
+    /** Label index -> class, resolved once (exact labels, see [LabelMap]). */
+    private val classTable: Array<ObjectClass> = LabelMap.tableFor(labels)
     private val shape = engine.outputShapes[0]            // [1, C, N] or [1, N, C]
     private val channelsFirst = shape[1] <= shape[2]
     private val numChannels = if (channelsFirst) shape[1] else shape[2]
@@ -72,8 +74,12 @@ class ObjectDetector(
             if (box.area <= 0f) continue
             dets.add(Detection(mapClass(best), bestScore, box))
         }
-        return nms(dets)
+        // A person sitting on a motorcycle/bicycle is its rider, not a pedestrian.
+        return RiderMerge.merge(nms(dets))
     }
+
+    /** Mean frame luminance (0..1) sampled during preprocessing of the last [detect] call. */
+    val lastMeanLuma: Float get() = pre.meanLuma
 
     /** Read element [channel, box] from the dequantized scratch honoring layout. */
     private fun at(channel: Int, box: Int): Float =
@@ -89,22 +95,9 @@ class ObjectDetector(
         buf.rewind()
     }
 
-    private fun mapClass(idx: Int): ObjectClass {
-        val label = labels.getOrNull(idx)?.lowercase() ?: return ObjectClass.UNKNOWN
-        return when {
-            "stop sign" in label || "stop_sign" in label -> ObjectClass.STOP_SIGN
-            "person" in label || "pedestrian" in label -> ObjectClass.PEDESTRIAN
-            "rickshaw" in label || "tuk" in label -> ObjectClass.AUTORICKSHAW
-            "motor" in label || "scooter" in label -> ObjectClass.MOTORCYCLE
-            "bicycle" in label || "cycle" in label -> ObjectClass.BICYCLE
-            "truck" in label -> ObjectClass.TRUCK
-            "bus" in label -> ObjectClass.BUS
-            "car" in label || "vehicle" in label -> ObjectClass.CAR
-            else -> ObjectClass.UNKNOWN
-        }
-    }
+    private fun mapClass(idx: Int): ObjectClass = if (idx in classTable.indices) classTable[idx] else ObjectClass.UNKNOWN
 
-    private fun nms(dets: ArrayList<Detection>): List<Detection> {
+    private fun nms(dets: ArrayList<Detection>): ArrayList<Detection> {
         if (dets.size <= 1) return dets
         dets.sortByDescending { it.score }
         val keep = ArrayList<Detection>(dets.size.coerceAtMost(config.maxDetections))
@@ -128,6 +121,7 @@ class ObjectDetector(
     private fun nmsGroup(c: ObjectClass): Int = when {
         c.isVehicle -> 1
         c == ObjectClass.MOTORCYCLE || c == ObjectClass.BICYCLE -> 2
+        c == ObjectClass.ANIMAL -> 3 // own group: never suppresses (or is suppressed by) a road user
         else -> 10 + c.ordinal
     }
 

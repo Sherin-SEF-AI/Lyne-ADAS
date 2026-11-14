@@ -13,4 +13,6 @@ data class Perception(
     val objectBackend: Backend,
     val ranLaneThisFrame: Boolean,
     val ranSignThisFrame: Boolean,
+    /** Mean frame luminance 0..1 from the object detector's preprocessing, or NaN if unknown. */
+    val meanLuma: Float = Float.NaN,
 )

@@ -36,6 +36,8 @@ class FusionEngine(
     private val ldwGate = AlertGate((450 * hs).toLong(), (300 * hs).toLong(), rearmMs = 6000L)
     private val overspeedGate = AlertGate(2500L, 1500L, offMs = 2000L, rearmMs = 30_000L)
     private val stopGate = AlertGate(400L, 300L, rearmMs = 10_000L)
+    private val animalGate = AlertGate((300 * hs).toLong(), (200 * hs).toLong(), rearmMs = 6000L)
+    private val lowLightEst = LowLightEstimator()
 
     private var leadId = -1
     private var lastLeadBox: BBox? = null
@@ -60,10 +62,14 @@ class FusionEngine(
         val lowThr = if (config.videoTestMode) config.objectScoreThreshold * 0.8f else config.objectScoreThreshold
         val tracks = tracker.update(p.detections, lowThr, p.timestampNs)
         val nowNs = p.timestampNs
+        // Night: detector boxes are noisier, so range measurements carry a larger sigma.
+        val lowLight = lowLightEst.update(p.meanLuma, nowNs)
+        val edgeNoise = if (lowLight) RangeEstimator.EDGE_NOISE_PX * RangeEstimator.LOW_LIGHT_EDGE_NOISE_MULT
+        else RangeEstimator.EDGE_NOISE_PX
 
         // Advance every track's filters; place it in metres relative to the predicted path.
         for (t in tracks) {
-            t.step(nowNs, t.misses == 0, geom, inputPx)
+            t.step(nowNs, t.misses == 0, geom, inputPx, edgeNoise)
             t.isLead = false
             val d = t.distanceM
             if (d.isNaN()) { t.inPath = false; t.lateralM = Float.NaN; continue }
@@ -86,6 +92,7 @@ class FusionEngine(
             ttcCaution += add; ttcCritical += add * 0.5f
             if (speedKph > 80f) hwWarn += 0.3f
         }
+        if (lowLight) ttcCaution += LowLightEstimator.TTC_CAUTION_ADD_SEC
 
         // --- Lead vehicle: nearest confirmed vehicle in the corridor ---
         var lead: Track? = null
@@ -178,6 +185,25 @@ class FusionEngine(
             }
         }
 
+        // --- Animals: treated as stationary, time-to-reach at ego speed (shares the VRU feature switch) ---
+        var animalRaw = Severity.NONE
+        var animalBox: BBox? = null
+        var animalDist: Float? = null
+        if (features.vru) {
+            for (t in tracks) {
+                if (t.cls != ObjectClass.ANIMAL || !t.confirmed || t.misses > 1) continue
+                val d = t.distanceM; if (d.isNaN() || t.lateralM.isNaN()) continue
+                val center = PathIntrusion.pathCenterM(d, speedMps, yawRate)
+                val half = RangeEstimator.widthPrior(t.cls) / 2f
+                val inEgo = PathIntrusion.overlapM(t.lateralM, half, center, PathIntrusion.EGO_HALF_M + PathIntrusion.ANIMAL_EGO_EXTRA_M) > 0f
+                val inNear = PathIntrusion.overlapM(t.lateralM, half, center, PathIntrusion.EGO_HALF_M + PathIntrusion.ANIMAL_NEAR_EXTRA_M) > 0f
+                val s = PathIntrusion.animalSeverity(d, speedMps, inEgo, inNear)
+                if (s.ordinal > animalRaw.ordinal || (s == animalRaw && s != Severity.NONE && d < (animalDist ?: Float.MAX_VALUE))) {
+                    animalRaw = s; animalBox = t.box; animalDist = d
+                }
+            }
+        }
+
         // --- LDW ---
         var ldwRaw = Severity.NONE
         var laneOffset: Float? = null
@@ -228,6 +254,10 @@ class FusionEngine(
             if (vruGate.active == Severity.CRITICAL) "PEDESTRIAN / RIDER" else "ROAD USER AHEAD",
             bbox = vruBox, distanceM = vruDist, speedKph = speedKph.orNull(),
         )
+        if (animalGate.update(animalRaw, nowMs)) events += AdasEvent(
+            AlertType.ANIMAL, animalGate.active, nowMs, 0.8f, "ANIMAL AHEAD",
+            bbox = animalBox, distanceM = animalDist, speedKph = speedKph.orNull(),
+        )
         if (ldwGate.update(ldwRaw, nowMs)) events += AdasEvent(
             AlertType.LDW, ldwGate.active, nowMs, p.lane.confidence, "LANE DEPARTURE", laneOffset = laneOffset,
             speedKph = speedKph.orNull(),
@@ -243,6 +273,7 @@ class FusionEngine(
 
         val fcw = fcwGate.active; val headway = headwayGate.active; val vru = maxSev(vruGate.active, vruRaw.infoOnly())
         val ldwSev = ldwGate.active; val ovs = overspeedGate.active; val stop = stopGate.active
+        val animal = animalGate.active
 
         // Master alert = highest active severity (FCW wins ties: it is the most urgent).
         var top = Severity.NONE; var topType: AlertType? = null; var topMsg: String? = null
@@ -251,6 +282,7 @@ class FusionEngine(
         }
         consider(fcw, AlertType.FCW, if (fcw == Severity.CRITICAL) "BRAKE" else "VEHICLE AHEAD")
         consider(vru, AlertType.VRU, if (vru == Severity.CRITICAL) "PEDESTRIAN / RIDER" else "ROAD USER AHEAD")
+        consider(animal, AlertType.ANIMAL, "ANIMAL AHEAD")
         consider(headway, AlertType.HEADWAY, "KEEP DISTANCE")
         consider(stop, AlertType.STOP, "STOP SIGN")
         consider(ldwSev, AlertType.LDW, "LANE DEPARTURE")
@@ -293,6 +325,7 @@ class FusionEngine(
             topSeverity = top, topType = topType, topMessage = topMsg,
             horizonLeftY = geom.horizonY(0f), horizonRightY = geom.horizonY(1f),
             heightScale = autoCal.scale, autoCalConfidence = autoCal.confidence,
+            animal = animal, lowLight = lowLight,
         )
     }
 
@@ -417,6 +450,7 @@ class FusionEngine(
     fun reset() {
         tracker.reset(); leadId = -1
         fcwGate.reset(); headwayGate.reset(); vruGate.reset(); ldwGate.reset(); overspeedGate.reset(); stopGate.reset()
+        animalGate.reset(); lowLightEst.reset()
     }
 
     companion object {

@@ -1,5 +1,5 @@
-# COCO-80 class names in YOLOv8 output order. ObjectDetector.mapClass picks the classes Lyne
-# reasons about (person, bicycle, car, motorcycle, bus, truck, stop sign); the rest -> UNKNOWN.
+# COCO-80 class names in YOLOv8 output order. LabelMap maps EXACT labels to the classes Lyne
+# reasons about (person, bicycle, car, motorcycle, bus, truck, stop sign, road animals); the rest -> UNKNOWN.
 # Replace with your own ordered labels if you fine-tune (e.g. add autorickshaw).
 person
 bicycle

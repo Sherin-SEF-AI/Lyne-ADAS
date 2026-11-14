@@ -57,4 +57,33 @@ object PathIntrusion {
             else -> Severity.NONE
         }
     }
+
+    /** Animal warnings are off below this ego speed (~10 km/h, like FCW). */
+    const val ANIMAL_MIN_SPEED_MPS = 2.8f
+    /** Corridor half-width margins for animals: ego path, and "near the path" (can step in). */
+    const val ANIMAL_EGO_EXTRA_M = 0.3f
+    const val ANIMAL_NEAR_EXTRA_M = 1.2f
+
+    /**
+     * Animal-ahead severity. Animals stand still, wander or cross without regard for traffic, so there
+     * is no useful closing-speed model for them: they are treated as stationary and time-to-reach is
+     * distance / ego speed.
+     *  - CRITICAL: in the ego corridor and reached in < 2 s
+     *  - CAUTION: in or near the corridor and reached in < 4 s
+     *  - nothing while (nearly) stopped. Unknown ego speed (no GPS fix) assumes 6 m/s and never goes
+     *    above CAUTION.
+     */
+    fun animalSeverity(distanceM: Float, egoSpeedMps: Float, inEgo: Boolean, inNear: Boolean): Severity {
+        if (distanceM.isNaN() || (!inEgo && !inNear)) return Severity.NONE
+        val known = !egoSpeedMps.isNaN()
+        val v = if (known) egoSpeedMps else 6f
+        if (v < ANIMAL_MIN_SPEED_MPS) return Severity.NONE
+        val ttr = distanceM / v
+        return when {
+            inEgo && ttr < 2.0f && known -> Severity.CRITICAL
+            ttr < 4.0f -> Severity.CAUTION
+            distanceM < 30f -> Severity.INFO
+            else -> Severity.NONE
+        }
+    }
 }

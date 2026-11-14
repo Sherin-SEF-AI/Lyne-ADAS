@@ -50,6 +50,8 @@ fun StatusStrip(state: AdasUiState) {
             Text(if (live) "LIVE" else "DEMO", color = p.text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             if (state.videoTest) Text("VIDEO TEST", color = p.caution, fontSize = 11.sp, fontWeight = FontWeight.Black)
             Text("· TIER ${state.tier.name} · ${state.perf?.backend?.name ?: "--"}", color = p.textDim, fontSize = 11.sp)
+            // Dark scene detected from the camera image: warnings run in their conservative night mode.
+            if (state.fusion?.lowLight == true) Text("NIGHT", color = p.accent, fontSize = 11.sp, fontWeight = FontWeight.Black)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(

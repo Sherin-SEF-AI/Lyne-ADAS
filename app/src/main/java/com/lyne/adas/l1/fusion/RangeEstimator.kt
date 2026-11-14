@@ -61,6 +61,7 @@ object RangeEstimator {
         ObjectClass.BICYCLE -> 0.60f
         ObjectClass.PEDESTRIAN -> 0.50f
         ObjectClass.STOP_SIGN -> 0.75f
+        ObjectClass.ANIMAL -> 0.90f       // cow rear ~0.6 m, side-on ~2 m; dog ~0.3-0.8 m
         ObjectClass.UNKNOWN -> 1.80f
     }
 
@@ -74,11 +75,14 @@ object RangeEstimator {
         ObjectClass.BICYCLE -> 0.25f
         ObjectClass.PEDESTRIAN -> 0.30f   // side-on vs front-on
         ObjectClass.STOP_SIGN -> 0.15f
+        ObjectClass.ANIMAL -> 0.45f       // species and side vs rear view: the width cue is weak
         ObjectClass.UNKNOWN -> 0.30f
     }
 
     /** Box edge localization noise in detector-input pixels (YOLOv8n INT8, ~1-1.5 px). */
     const val EDGE_NOISE_PX = 1.3f
+    /** At night boxes are noisier (low contrast, headlight bloom, motion blur): edge noise multiplier. */
+    const val LOW_LIGHT_EDGE_NOISE_MULT = 1.8f
     /** Short-term pitch oscillation from road bumps / mount vibration (rad), ~0.25 deg. */
     private const val BOUNCE_RAD = 0.0045f
     /** Relative uncertainty of the camera height (user preset, refined by auto-cal). */
@@ -92,6 +96,7 @@ object RangeEstimator {
         learnedWidthM: Float,
         learnedRelSigma: Float,
         out: RangeMeasurement,
+        edgeNoisePx: Float = EDGE_NOISE_PX,
     ): Boolean {
         out.clear()
         val px = inputPx.coerceAtLeast(96).toFloat()
@@ -105,7 +110,7 @@ object RangeEstimator {
             val priorRel = if (useLearned) learnedRelSigma else widthPriorRelSigma(cls)
             val k = 2f * geom.tanHalfH / (realW * geom.distanceScale)
             val q = box.width * k
-            val jit = (EDGE_NOISE_PX * 1.414f / px) * k            // absolute, value-independent
+            val jit = (edgeNoisePx * 1.414f / px) * k            // absolute, value-independent
             val bias = q * priorRel
             out.widthInv = q; out.widthInvSigma = sqrt(jit * jit + bias * bias); wJit = jit
         }
@@ -119,7 +124,7 @@ object RangeEstimator {
                 val q = tan(a) / h
                 val c = cos(a)
                 val dqda = 1f / (h * c * c)
-                val pxAng = geom.pixelAngleV(inputPx) * EDGE_NOISE_PX
+                val pxAng = geom.pixelAngleV(inputPx) * edgeNoisePx
                 val jitAng = sqrt(BOUNCE_RAD * BOUNCE_RAD + pxAng * pxAng)
                 val jit = dqda * jitAng
                 val biasAng = dqda * geom.pitchSigmaRad

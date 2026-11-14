@@ -93,7 +93,13 @@ class Track(val id: Int, cls: ObjectClass, box: BBox, score: Float, nowNs: Long)
      * Advance the filters to [nowNs]. When [fresh] (matched this frame) a new range measurement and
      * scale sample are folded in; otherwise the Kalman coasts on its velocity.
      */
-    fun step(nowNs: Long, fresh: Boolean, geom: CameraGeometry, inputPx: Int) {
+    fun step(
+        nowNs: Long,
+        fresh: Boolean,
+        geom: CameraGeometry,
+        inputPx: Int,
+        edgeNoisePx: Float = RangeEstimator.EDGE_NOISE_PX,
+    ) {
         val dt = if (lastStepNs == 0L) 0f else (nowNs - lastStepNs) / 1e9f
         lastStepNs = nowNs
         kalman.predict(dt)
@@ -108,7 +114,7 @@ class Track(val id: Int, cls: ObjectClass, box: BBox, score: Float, nowNs: Long)
         if (truncated) scaleRate.reset()
         else scaleRate.add(nowNs / 1e9, sqrt(b.width * b.height))
 
-        if (RangeEstimator.measure(cls, b, geom, inputPx, learnedWidthM, learnedRelSigma, meas)) {
+        if (RangeEstimator.measure(cls, b, geom, inputPx, learnedWidthM, learnedRelSigma, meas, edgeNoisePx)) {
             // Kalman sees only the random part; bias (pitch, prior) is constant and would just add lag.
             kalman.update(meas.inv, meas.invJitter.coerceAtLeast(0.01f * meas.inv))
             lastMeasNs = nowNs

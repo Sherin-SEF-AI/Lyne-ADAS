@@ -34,6 +34,9 @@ class TensorPreprocessor(
     val inputWidth get() = w
     val inputHeight get() = h
 
+    /** Mean luminance (0..1) of the last filled image, from a sparse ~32x32 grid (cheap). */
+    var meanLuma: Float = Float.NaN; private set
+
     fun fill(src: Bitmap, dst: ByteBuffer) = fillRegion(src, 0, 0, src.width, src.height, dst)
 
     /** Like [fill] but only the given pixel sub-rectangle of [src] is scaled into the input tensor. */
@@ -41,6 +44,7 @@ class TensorPreprocessor(
         srcRect.set(left, top, right, bottom)
         canvas.drawBitmap(src, srcRect, dstRect, paint)
         scaled.getPixels(pixels, 0, w, 0, 0, w, h)
+        meanLuma = Luma.sparseMean(pixels, w, h)
         dst.rewind()
         when (dataType) {
             DataType.FLOAT32 -> {

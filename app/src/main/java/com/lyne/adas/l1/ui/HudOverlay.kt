@@ -156,6 +156,8 @@ private fun DrawScope.drawObject(o: TrackedObject, result: FusionResult, map: Ma
         o.isLead -> p.accent
         o.cls.isVru && result.vru == Severity.CRITICAL -> p.critical
         o.cls.isVru && o.inPath -> p.caution
+        o.cls == ObjectClass.ANIMAL && result.animal == Severity.CRITICAL -> p.critical
+        o.cls == ObjectClass.ANIMAL && (o.inPath || result.animal == Severity.CAUTION) -> p.caution
         o.cls == ObjectClass.STOP_SIGN -> p.critical
         o.inPath -> p.text
         else -> p.textDim
@@ -239,7 +241,8 @@ private fun DrawScope.drawPolyline(rows: FloatArray, xs: FloatArray?, color: Col
 private fun classTag(c: ObjectClass): String = when (c) {
     ObjectClass.CAR -> "CAR"; ObjectClass.TRUCK -> "TRUCK"; ObjectClass.BUS -> "BUS"
     ObjectClass.AUTORICKSHAW -> "AUTO"; ObjectClass.MOTORCYCLE -> "MOTO"; ObjectClass.BICYCLE -> "CYCLE"
-    ObjectClass.PEDESTRIAN -> "PED"; ObjectClass.STOP_SIGN -> "STOP"; ObjectClass.UNKNOWN -> "OBJ"
+    ObjectClass.PEDESTRIAN -> "PED"; ObjectClass.STOP_SIGN -> "STOP"
+    ObjectClass.ANIMAL -> "ANIMAL"; ObjectClass.UNKNOWN -> "OBJ"
 }
 
 /** Maps normalized [0,1] display-image coords to view pixels under a FILL_CENTER crop. */

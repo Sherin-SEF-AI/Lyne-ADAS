@@ -2,7 +2,7 @@ package com.lyne.adas.l1.fusion
 
 import com.lyne.adas.l1.inference.BBox
 
-enum class AlertType { FCW, VRU, LDW, HEADWAY, OVERSPEED, STOP, LEAD_GO }
+enum class AlertType { FCW, VRU, LDW, HEADWAY, OVERSPEED, STOP, LEAD_GO, ANIMAL }
 
 /** Severity ladder. Color is "earned" only above NONE; CRITICAL drives the strongest alert. */
 enum class Severity { NONE, INFO, CAUTION, CRITICAL }
