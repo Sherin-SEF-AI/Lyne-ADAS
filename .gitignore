@@ -25,3 +25,12 @@ build/
 .setup_py*
 .install_toolchain*
 calibration_image_sample_data_*.npy
+
+# release signing (never commit keys or their passwords)
+keystore.properties
+*.jks
+*.keystore
+
+# training pipeline workspace (datasets, runs, exported models)
+models/train/work/
+__pycache__/

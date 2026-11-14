@@ -1,7 +1,28 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+// Release signing: a gitignored keystore.properties at the project root (storeFile, storePassword,
+// keyAlias, keyPassword), or the env vars LYNE_KEYSTORE_FILE / LYNE_KEYSTORE_PASSWORD /
+// LYNE_KEY_ALIAS / LYNE_KEY_PASSWORD (CI). Without either, the release APK is built unsigned so the
+// build never breaks.
+val releaseSigning: Map<String, String>? = run {
+    val props = Properties()
+    val f = rootProject.file("keystore.properties")
+    if (f.isFile) f.inputStream().use { props.load(it) }
+    fun pick(key: String, env: String): String? =
+        props.getProperty(key)?.takeIf { it.isNotBlank() } ?: System.getenv(env)?.takeIf { it.isNotBlank() }
+    val store = pick("storeFile", "LYNE_KEYSTORE_FILE")
+    val storePw = pick("storePassword", "LYNE_KEYSTORE_PASSWORD")
+    val alias = pick("keyAlias", "LYNE_KEY_ALIAS")
+    val keyPw = pick("keyPassword", "LYNE_KEY_PASSWORD") ?: storePw
+    if (store != null && storePw != null && alias != null && keyPw != null && rootProject.file(store).isFile) {
+        mapOf("storeFile" to store, "storePassword" to storePw, "keyAlias" to alias, "keyPassword" to keyPw)
+    } else null
 }
 
 android {
@@ -12,10 +33,21 @@ android {
         applicationId = "com.lyne.adas.l1"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "2.1"
 
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigning.getValue("storeFile"))
+                storePassword = releaseSigning.getValue("storePassword")
+                keyAlias = releaseSigning.getValue("keyAlias")
+                keyPassword = releaseSigning.getValue("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -27,6 +59,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (releaseSigning != null) signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -57,6 +90,11 @@ android {
     }
     androidResources {
         noCompress += "tflite"
+    }
+    lint {
+        // MainActivity is a ComponentActivity (no FragmentActivity), so the old fragment 1.1.0 that
+        // play-services pulls in transitively never handles our ActivityResult calls.
+        disable += "InvalidFragmentVersionForActivityResult"
     }
 }
 
