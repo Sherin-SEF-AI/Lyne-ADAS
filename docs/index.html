@@ -22,7 +22,9 @@
 <meta name="twitter:title" content="Lyne ADAS — On-device driver assistance for Android">
 <meta name="twitter:description" content="Open-source, 100% on-device ADAS Level 1 for Android. Accuracy-focused v2.0.">
 <meta name="twitter:image" content="https://sherin-sef-ai.github.io/Lyne-ADAS/img/drive-keep-distance.jpg">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307090c'/%3E%3Cpath d='M26 10 L8 56 H22 L30 10Z' fill='%2349F08C' opacity='.85'/%3E%3Cpath d='M38 10 L56 56 H42 L34 10Z' fill='%2349F08C' opacity='.85'/%3E%3Crect x='22' y='24' width='20' height='14' rx='3' fill='none' stroke='%2336D6F2' stroke-width='4'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="img/logo/favicon.svg">
+<link rel="icon" type="image/png" sizes="180x180" href="img/logo/icon-180.png">
+<link rel="apple-touch-icon" href="img/logo/icon-180.png">
 <style>
 :root{
   --bg:#07090c;--bg2:#0c1016;--card:#111821;--card2:#0f151d;--line:#1d2834;--line2:#273545;
@@ -54,7 +56,7 @@ header.nav{position:sticky;top:0;z-index:50;background:rgba(7,9,12,.82);backdrop
 .nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px;gap:12px}
 .brand{display:flex;align-items:center;gap:10px;color:var(--tx);font-weight:700;letter-spacing:-.01em}
 .brand:hover{text-decoration:none}
-.brand svg{width:28px;height:28px;flex:none}
+.brand img{height:32px;width:auto;display:block}
 .brand small{color:var(--dim);font-weight:500;font-size:.78rem;border:1px solid var(--line2);border-radius:99px;padding:1px 8px}
 .nav nav{display:flex;gap:22px;font-size:.92rem}
 .nav nav a{color:var(--mut)}
@@ -185,6 +187,7 @@ td:first-child{color:var(--tx);white-space:nowrap}
 
 /* cta + footer */
 .cta{text-align:center}
+.cta-mark{display:block;margin:0 auto 22px;height:72px;width:auto}
 .cta .sub{margin-left:auto;margin-right:auto}
 .cta .btns{justify-content:center}
 footer{border-top:1px solid var(--line);padding:36px 0;color:var(--dim);font-size:.9rem}
@@ -274,8 +277,8 @@ dialog.lb img{display:block;width:100%;height:auto}
 <header class="nav">
   <div class="wrap">
     <a class="brand" href="#top" aria-label="Lyne ADAS home">
-      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#111821"/><path d="M26 10 8 56h14l8-46z" fill="#49F08C" opacity=".85"/><path d="M38 10l18 46H42l-8-46z" fill="#49F08C" opacity=".85"/><rect x="22" y="24" width="20" height="14" rx="3" fill="none" stroke="#36D6F2" stroke-width="4"/></svg>
-      Lyne ADAS <small>v2.0</small>
+      <img src="img/logo/lyne-logo-light.svg" alt="Lyne ADAS" width="106" height="32">
+      <small>v2.0</small>
     </a>
     <nav aria-label="Primary">
       <a href="#watch">Video</a>
@@ -624,6 +627,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk">Copy</button>
 
 <section class="cta" aria-labelledby="ch">
   <div class="wrap">
+    <img class="cta-mark" src="img/logo/lyne-mark.svg" alt="" width="96" height="73">
     <h2 id="ch">Open source. On-device. Free.</h2>
     <p class="sub">Try it on your next drive, log accuracy against ground truth, and help make it better. Recordings of where it gets things wrong are the most useful contribution of all.</p>
     <div class="btns">

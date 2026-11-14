@@ -125,8 +125,11 @@ fun HudScreen(
         if (!state.cameraReady) {
             Box(Modifier.fillMaxSize().background(p.background), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("LYNE", color = p.text, fontSize = 34.sp, fontWeight = FontWeight.Black)
-                    Text("driver assistance", color = p.accent, fontSize = 12.sp)
+                    androidx.compose.material3.Icon(
+                        androidx.compose.ui.res.painterResource(com.lyne.adas.l1.R.drawable.ic_lyne_lockup),
+                        contentDescription = "Lyne ADAS", tint = p.text,
+                        modifier = Modifier.size(width = 200.dp, height = 60.dp),
+                    )
                     Text(state.error ?: "Starting camera and models…", color = p.textDim, fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
                 }
             }

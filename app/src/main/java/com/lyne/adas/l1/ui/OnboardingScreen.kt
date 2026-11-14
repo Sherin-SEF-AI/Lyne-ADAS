@@ -54,6 +54,11 @@ fun OnboardingScreen(
     val isDisclaimerStep = step == DISCLAIMER_STEP
 
     Column(Modifier.fillMaxSize().background(p.background).padding(24.dp)) {
+        androidx.compose.material3.Icon(
+            androidx.compose.ui.res.painterResource(com.lyne.adas.l1.R.drawable.ic_lyne_lockup),
+            contentDescription = "Lyne ADAS", tint = p.text,
+            modifier = Modifier.padding(bottom = 16.dp).size(width = 133.dp, height = 40.dp),
+        )
         // progress dots
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             STEPS.indices.forEach { i ->

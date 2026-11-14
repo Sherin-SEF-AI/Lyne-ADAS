@@ -1,6 +1,9 @@
 <div align="center">
 
-# Lyne ADAS
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/logo/lyne-logo-light.svg">
+  <img src="docs/img/logo/lyne-logo-dark.svg" alt="Lyne ADAS" width="420">
+</picture>
 
 ### Real-time, on-device driver assistance for any Android phone.
 
