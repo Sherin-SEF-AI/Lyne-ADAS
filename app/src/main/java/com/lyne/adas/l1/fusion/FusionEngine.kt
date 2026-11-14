@@ -38,6 +38,7 @@ class FusionEngine(
     private val stopGate = AlertGate(400L, 300L, rearmMs = 10_000L)
 
     private var leadId = -1
+    private val brakeLights = BrakeLightDetector()
     private var lastLeadBox: BBox? = null
 
     // Stop-and-go ("traffic moving") state.
@@ -54,6 +55,8 @@ class FusionEngine(
         geom: CameraGeometry,
         inputPx: Int,
         nowMs: Long,
+        /** Frame pixels for the brake-light cue on the lead; null disables it. */
+        pixels: LeadPixelSource? = null,
     ): FusionResult {
         val speedKph = if (speedMps.isNaN()) Float.NaN else speedMps * 3.6f
         // Screen footage (moire, glare) lowers detector confidence; bench mode spawns tracks a bit earlier.
@@ -101,11 +104,16 @@ class FusionEngine(
             // Only a genuinely different vehicle has to earn its own alert; an id swap on the same
             // object (overlapping boxes) keeps the evidence gathered so far.
             val same = lead != null && lastLeadBox != null && lead.box.iou(lastLeadBox!!) > 0.3f
-            if (!same) { fcwGate.resetEvidence(); headwayGate.resetEvidence() }
+            if (!same) { fcwGate.resetEvidence(); headwayGate.resetEvidence(); brakeLights.reset() }
         }
         leadId = newLeadId
         lastLeadBox = lead?.box
         lead?.isLead = true
+
+        // Brake lights: sampled on this frame's raw detector box of the lead only.
+        val leadBraking = if (lead != null && pixels != null && lead.misses == 0)
+            brakeLights.update(lead.rawBox, pixels, nowMs)
+        else brakeLights.coast(nowMs)
 
         var leadDist: Float? = null; var leadSigma: Float? = null; var leadConf: Float? = null
         var leadClosing: Float? = null; var ttcSec: Float? = null; var headwaySec: Float? = null
@@ -119,7 +127,9 @@ class FusionEngine(
             leadConf = ((1f - (relSigma - 0.05f) / 0.35f).coerceIn(0f, 1f) * (0.6f + 0.4f * lead.score)).coerceIn(0f, 1f)
             if (lead.kalman.updates >= 3) leadClosing = lead.closingMps
 
-            val ttc = fusedTtc(lead)
+            // A braking lead (brake lights on) lowers the evidence needed for an early CAUTION and
+            // widens its TTC window. It never contributes to CRITICAL: that still needs z >= 3.
+            val ttc = fusedTtc(lead, if (leadBraking) BRAKING_MIN_Z else 2f)
             val egoKnown = !speedMps.isNaN()
             val egoMoving = !egoKnown || speedMps >= MIN_FCW_SPEED_MPS
             if (ttc.valid) {
@@ -134,7 +144,7 @@ class FusionEngine(
                         val hardOk = leadConf >= config.minDistanceConfidence && ttc.z >= 3f && closing >= 2f
                         fcwRaw = when {
                             ttc.ttc < ttcCritical -> if (hardOk) Severity.CRITICAL else Severity.CAUTION
-                            ttc.ttc < ttcCaution -> Severity.CAUTION
+                            ttc.ttc < ttcCaution + (if (leadBraking) BRAKING_CAUTION_ADD_SEC else 0f) -> Severity.CAUTION
                             else -> Severity.NONE
                         }
                     }
@@ -268,7 +278,7 @@ class FusionEngine(
                 if (d.isNaN()) null else d,
                 if (d.isNaN()) null else t.sigmaM,
                 if (t.kalman.updates >= 3) t.closingMps else null,
-                t.inPath, t.isLead,
+                t.inPath, t.isLead, braking = t.isLead && leadBraking,
             )
         }
 
@@ -293,6 +303,7 @@ class FusionEngine(
             topSeverity = top, topType = topType, topMessage = topMsg,
             horizonLeftY = geom.horizonY(0f), horizonRightY = geom.horizonY(1f),
             heightScale = autoCal.scale, autoCalConfidence = autoCal.confidence,
+            leadBraking = lead != null && leadBraking,
         )
     }
 
@@ -304,7 +315,7 @@ class FusionEngine(
      * noise is roughly Gaussian: the looming-rate regression and the Kalman range-rate. Only a lambda
      * at least 2 sigma above zero counts as "closing".
      */
-    private fun fusedTtc(t: Track): Ttc {
+    private fun fusedTtc(t: Track, minZ: Float = 2f): Ttc {
         val sr = t.scaleRate
         var wSum = 0f; var lSum = 0f
         // Best single-cue evidence: a strongly significant cue is not diluted by a lagging one
@@ -328,7 +339,7 @@ class FusionEngine(
         var lambda = lSum / wSum
         var z = lambda / sqrt(1f / wSum)
         if (single > lambda) { lambda = single; z = singleZ }
-        if (lambda <= 0.02f || z < 2f) return noTtc
+        if (lambda <= 0.02f || z < minZ) return noTtc
         return Ttc(true, (1f / lambda).coerceIn(0f, 30f), lambda, z)
     }
 
@@ -415,7 +426,7 @@ class FusionEngine(
     }
 
     fun reset() {
-        tracker.reset(); leadId = -1
+        tracker.reset(); leadId = -1; brakeLights.reset()
         fcwGate.reset(); headwayGate.reset(); vruGate.reset(); ldwGate.reset(); overspeedGate.reset(); stopGate.reset()
     }
 
@@ -425,5 +436,9 @@ class FusionEngine(
         /** Tailgating warnings only above ~30 km/h. */
         const val MIN_HEADWAY_SPEED_MPS = 8.3f
         const val MIN_LDW_SPEED_MPS = 11f
+        /** Looming significance needed for CAUTION while the lead shows brake lights (else 2). */
+        const val BRAKING_MIN_Z = 1.5f
+        /** Extra CAUTION TTC window while the lead shows brake lights. */
+        const val BRAKING_CAUTION_ADD_SEC = 0.5f
     }
 }

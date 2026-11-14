@@ -178,6 +178,15 @@ private fun DrawScope.drawObject(o: TrackedObject, result: FusionResult, map: Ma
         else -> classTag(o.cls)
     }
     drawLabel(measurer, label, l, t, color, p.chip, big = o.isLead)
+    if (o.isLead && result.leadBraking) {
+        // Brake lights seen on the lead: red chip just under the box.
+        val style = TextStyle(color = p.background, fontSize = 12.sp, fontWeight = FontWeight.Black)
+        val layout = measurer.measure("BRAKING", style)
+        val pad = 3f * density
+        val y = (b + 2f * density).coerceAtMost(size.height - layout.size.height - 2 * pad)
+        drawRect(p.critical, Offset(l, y), Size(layout.size.width + 2 * pad, layout.size.height + 2 * pad))
+        drawText(layout, topLeft = Offset(l + pad, y + pad))
+    }
 }
 
 private fun DrawScope.drawHorizon(result: FusionResult, map: Mapper, p: LynePalette) {

@@ -99,6 +99,7 @@ class AdasController(
     private var lastUiPushMs = 0L
     private var lastDiagMs = 0L
     private val diagEvents = StringBuilder()
+    private val leadSampler = com.lyne.adas.l1.inference.BitmapLeadSampler()
 
     fun start(preview: PreviewView?) {
         if (started) return
@@ -124,7 +125,7 @@ class AdasController(
         session = DriveSession(System.currentTimeMillis())
 
         if (location.hasPermission()) location.start()
-        if (motion.available) motion.start()
+        if (motion.available) { motion.speedEstimator = location.estimator; motion.start() }
         light.start { night -> nightAuto = night; pushNight() }
         thermal.start { multiplier, label ->
             scheduler?.setCadenceMultiplier(multiplier)
@@ -176,16 +177,24 @@ class AdasController(
         val f = fusion ?: return
         val nowMs = System.currentTimeMillis()
         val video = config.videoTestMode
-        val speed = if (video) config.videoTestSpeedKph / 3.6f else location.speedMps
+        // GPS speed, held and dead-reckoned with the IMU through short outages (tunnels, underpasses).
+        val speed = if (video) config.videoTestSpeedKph / 3.6f else location.fusedSpeedMps
+        val speedEstimated = !video && location.speedEstimated
         motion.longAccel = location.longAccel
-        val result = f.update(
-            p = p,
-            speedMps = speed,
-            yawRate = if (motion.hasGyro && !video) motion.yawRate else 0f,
-            geom = geometry(f),
-            inputPx = modelInputPx,
-            nowMs = nowMs,
-        )
+        // The pooled frame is only valid during this callback: expose it to the brake-light sampler
+        // for the duration of the fusion step.
+        leadSampler.bitmap = p.frame?.bitmap
+        val result = try {
+            f.update(
+                p = p,
+                speedMps = speed,
+                yawRate = if (motion.hasGyro && !video) motion.yawRate else 0f,
+                geom = geometry(f),
+                inputPx = modelInputPx,
+                nowMs = nowMs,
+                pixels = leadSampler,
+            )
+        } finally { leadSampler.bitmap = null }
         alerts.onResult(result, nowMs)
         accuracyLog?.record(nowMs, result)
         for (e in result.events) diagEvents.append(e.type.name).append(':').append(e.severity.name.take(4)).append(' ')
@@ -217,6 +226,7 @@ class AdasController(
             mountRollDeg = Math.toDegrees(kotlin.math.atan(motion.mount.rollTan.toDouble())).toFloat(),
             mountConvergence = motion.mount.convergence,
             rangeCheck = rangeCheck.state,
+            speedEstimated = speedEstimated,
         )
     }
 
@@ -226,12 +236,13 @@ class AdasController(
             "${o.cls.name.take(3)}#${o.id}${if (o.isLead) "*" else ""}" +
                 (o.distanceM?.let { "@%.0f".format(it) } ?: "") + (if (o.inPath) "P" else "")
         }
-        Log.i("Diag", "fps=%.1f v=%s raw=%d trk=%d lead=%s±%s cl=%s ttc=%s fcw=%s vru=%s hw=%s ldw=%s top=%s ev=%s | %s".format(
+        Log.i("Diag", "fps=%.1f v=%s%s raw=%d trk=%d lead=%s±%s cl=%s ttc=%s fcw=%s vru=%s hw=%s ldw=%s top=%s ev=%s | %s".format(
             perf.snapshot().fps, if (speedMps.isNaN()) "NaN" else "%.0f".format(speedMps * 3.6f),
+            if (!config.videoTestMode && location.speedEstimated) "~" else "",
             r.detections.size, r.objects.size,
             r.leadDistanceM?.let { "%.1f".format(it) } ?: "-", r.leadSigmaM?.let { "%.1f".format(it) } ?: "-",
             r.leadClosingMps?.let { "%.1f".format(it) } ?: "-", r.ttcSec?.let { "%.1f".format(it) } ?: "-",
-            r.fcw, r.vru, r.headway, r.ldw, r.topMessage ?: "-",
+            r.fcw, r.vru, r.headway, r.ldw, (r.topMessage ?: "-") + (if (r.leadBraking) " [BRK]" else ""),
             diagEvents.toString().trim().ifEmpty { "-" }, objs))
     }
 

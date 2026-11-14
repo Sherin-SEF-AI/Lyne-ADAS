@@ -13,4 +13,9 @@ data class Perception(
     val objectBackend: Backend,
     val ranLaneThisFrame: Boolean,
     val ranSignThisFrame: Boolean,
+    /**
+     * The pooled frame these detections came from. Valid ONLY inside the scheduler's onResult
+     * callback (the bitmap is recycled right after); used for cheap pixel cues such as brake lights.
+     */
+    val frame: CameraFrame? = null,
 )

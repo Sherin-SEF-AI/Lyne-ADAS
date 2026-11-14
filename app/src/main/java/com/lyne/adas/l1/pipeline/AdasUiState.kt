@@ -42,4 +42,6 @@ data class AdasUiState(
     val autoCalEnabled: Boolean = true,
     val distanceScale: Float = 1f,
     val rangeCheck: com.lyne.adas.l1.logging.RangeCheckState = com.lyne.adas.l1.logging.RangeCheckState(),
+    /** Speed is held/dead-reckoned through a GPS outage, not a fresh GPS reading. */
+    val speedEstimated: Boolean = false,
 )

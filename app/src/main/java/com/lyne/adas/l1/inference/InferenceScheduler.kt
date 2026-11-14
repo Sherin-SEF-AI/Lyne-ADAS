@@ -110,6 +110,7 @@ class InferenceScheduler(
                     objectBackend = lastBackend.get(),
                     ranLaneThisFrame = false, // lane runs async on its own thread
                     ranSignThisFrame = ranSign,
+                    frame = frame,
                 )
             )
             perf.frameDone(System.nanoTime() - t0)

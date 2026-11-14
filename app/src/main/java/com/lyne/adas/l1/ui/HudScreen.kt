@@ -81,7 +81,10 @@ fun HudScreen(
             HeadwayRing(state.fusion?.headwaySec, state.fusion?.headway ?: Severity.NONE)
         }
         Box(Modifier.align(Alignment.CenterEnd).padding(end = 6.dp)) {
-            SpeedGauge(state.fusion?.speedKph, state.fusion?.speedLimitKph, state.fusion?.overspeed ?: Severity.NONE)
+            SpeedGauge(
+                state.fusion?.speedKph, state.fusion?.speedLimitKph, state.fusion?.overspeed ?: Severity.NONE,
+                estimated = state.speedEstimated,
+            )
         }
 
         // Master alert banner, else the lead-vehicle readout.

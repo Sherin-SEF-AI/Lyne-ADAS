@@ -37,6 +37,9 @@ class MotionProvider(private val context: Context) : SensorEventListener {
     /** Latest GPS longitudinal acceleration (m/s^2), fed by the controller; NaN if unknown. */
     @Volatile var longAccel: Float = Float.NaN
 
+    /** Receives forward (travel-direction) acceleration for dead-reckoning speed through GPS outages. */
+    @Volatile var speedEstimator: SpeedEstimator? = null
+
     private val g = FloatArray(3)            // gravity, device axes
     private val lin = FloatArray(3)          // raw accel, device axes
     private var gInit = false
@@ -61,6 +64,11 @@ class MotionProvider(private val context: Context) : SensorEventListener {
             Sensor.TYPE_ACCELEROMETER -> {
                 lin[0] = e.values[0]; lin[1] = e.values[1]; lin[2] = e.values[2]
                 if (gravitySensor == null) { setG(e.values, if (gInit) 0.05f else 1f); updateMount(e.timestamp) }
+                val est = speedEstimator
+                if (est != null && gInit) {
+                    val fwd = SpeedEstimator.forwardAccel(lin[0], lin[1], lin[2], g[0], g[1], g[2])
+                    est.onAccel(android.os.SystemClock.elapsedRealtime(), fwd)
+                }
             }
             Sensor.TYPE_GYROSCOPE -> {
                 val wx = e.values[0]; val wy = e.values[1]; val wz = e.values[2]

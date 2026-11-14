@@ -26,6 +26,18 @@ class LocationProvider(private val context: Context) {
     val speedMps: Float
         get() = if (android.os.SystemClock.elapsedRealtime() - lastFixMs > 3000L) Float.NaN else rawSpeedMps
 
+    /**
+     * Speed estimate that survives GPS outages: fresh GPS speed, else the last good speed
+     * dead-reckoned with the IMU (fed by [MotionProvider.speedEstimator]) for up to ~20 s, else NaN.
+     */
+    val estimator = SpeedEstimator()
+
+    /** Best available speed (m/s): GPS, or a held/dead-reckoned estimate; NaN when unknown. */
+    val fusedSpeedMps: Float get() = estimator.speedMps(android.os.SystemClock.elapsedRealtime())
+
+    /** True while [fusedSpeedMps] is an estimate held through a GPS outage. */
+    val speedEstimated: Boolean get() = estimator.isEstimated(android.os.SystemClock.elapsedRealtime())
+
     /** Longitudinal acceleration from consecutive GPS speeds (m/s^2), NaN if unknown. */
     @Volatile var longAccel: Float = Float.NaN
         private set
@@ -46,6 +58,7 @@ class LocationProvider(private val context: Context) {
                 longAccel = if (!prev.isNaN() && dt in 0.2f..3f) (loc.speed - prev) / dt else Float.NaN
                 rawSpeedMps = loc.speed
                 lastFixMs = now
+                estimator.onGps(now, loc.speed)
             }
             latitude = loc.latitude; longitude = loc.longitude
             hasFix = true
@@ -72,6 +85,7 @@ class LocationProvider(private val context: Context) {
     fun stop() {
         try { client.removeLocationUpdates(callback) } catch (_: Throwable) {}
         hasFix = false
+        estimator.reset()
     }
 
     companion object { private const val TAG = "LocationProvider" }
