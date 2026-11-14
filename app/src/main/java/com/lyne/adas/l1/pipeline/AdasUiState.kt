@@ -42,4 +42,7 @@ data class AdasUiState(
     val autoCalEnabled: Boolean = true,
     val distanceScale: Float = 1f,
     val rangeCheck: com.lyne.adas.l1.logging.RangeCheckState = com.lyne.adas.l1.logging.RangeCheckState(),
+    // Driver-safety guidance
+    val cameraHealth: com.lyne.adas.l1.camera.CameraHealth = com.lyne.adas.l1.camera.CameraHealth(),
+    val deviceHints: List<com.lyne.adas.l1.perf.DeviceHint> = emptyList(),
 )

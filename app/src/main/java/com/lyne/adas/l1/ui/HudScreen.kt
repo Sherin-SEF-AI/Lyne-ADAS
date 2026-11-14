@@ -86,7 +86,11 @@ fun HudScreen(
 
         // Master alert banner, else the lead-vehicle readout.
         val msg = state.fusion?.topMessage
-        Box(Modifier.align(Alignment.TopCenter).padding(top = 10.dp)) {
+        Column(
+            Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             if (top != Severity.NONE && msg != null) {
                 Row(
                     Modifier.background(bannerColor, RoundedCornerShape(14.dp)).padding(horizontal = 20.dp, vertical = 8.dp),
@@ -96,7 +100,13 @@ fun HudScreen(
                     Text("  $msg", color = p.background, fontWeight = FontWeight.Black, fontSize = if (top == Severity.CRITICAL) 26.sp else 20.sp)
                 }
             } else LeadCard(state.fusion)
+            // Camera self-check (blocked lens / bad mount) sits under the master alert.
+            CameraHealthBanner(state.cameraHealth)
+            if (state.muted) MutedNote()
         }
+
+        // Phone battery / heat guidance, out of the driver's main sight line.
+        DeviceHintChips(state.deviceHints, Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 14.dp))
 
         // Bottom action bar.
         ControlBar(

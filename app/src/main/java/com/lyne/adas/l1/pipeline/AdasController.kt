@@ -14,6 +14,8 @@ import com.lyne.adas.l1.logging.AccuracyLogger
 import com.lyne.adas.l1.calibration.CameraIntrinsics
 import com.lyne.adas.l1.calibration.IntrinsicsReader
 import com.lyne.adas.l1.camera.CameraController
+import com.lyne.adas.l1.camera.CameraHealthMonitor
+import com.lyne.adas.l1.camera.FrameStats
 import com.lyne.adas.l1.camera.FrameAnalyzer
 import com.lyne.adas.l1.camera.ImageBuffers
 import com.lyne.adas.l1.config.AdasConfig
@@ -28,6 +30,8 @@ import com.lyne.adas.l1.inference.DetectorSet
 import com.lyne.adas.l1.inference.InferenceScheduler
 import com.lyne.adas.l1.inference.Perception
 import com.lyne.adas.l1.logging.Log
+import com.lyne.adas.l1.perf.DeviceGuidance
+import com.lyne.adas.l1.perf.DeviceHint
 import com.lyne.adas.l1.perf.PerfMonitor
 import com.lyne.adas.l1.perf.ThermalManager
 import com.lyne.adas.l1.perf.TierSelector
@@ -100,6 +104,12 @@ class AdasController(
     private var lastDiagMs = 0L
     private val diagEvents = StringBuilder()
 
+    // Camera self-check (blocked lens / bad mount) and phone battery/heat guidance.
+    @Volatile private var cameraHealth = CameraHealthMonitor()
+    private var lastBatteryMs = 0L
+    @Volatile private var batteryPct: Int? = null
+    @Volatile private var charging: Boolean? = null
+
     fun start(preview: PreviewView?) {
         if (started) return
         started = true
@@ -118,6 +128,8 @@ class AdasController(
         modelInputPx = if (profile.useNanoModels) 256 else 320
         motion.mount.seed(calibration.lastPitchRad, calibration.lastRollTan)
         alerts.voiceEnabled = config.voiceAlerts
+        cameraHealth = CameraHealthMonitor()
+        lastBatteryMs = 0L
 
         buildPipeline()
 
@@ -130,6 +142,7 @@ class AdasController(
             scheduler?.setCadenceMultiplier(multiplier)
             perf.cadenceMultiplier = multiplier
             perf.thermal = label
+            pushDeviceHints()
         }
 
         val target = analysisTargetFor(profile.inputResolution)
@@ -169,7 +182,7 @@ class AdasController(
             recycle = { frame -> pl.release(frame.bitmap) },
         )
         scheduler = sch
-        analyzer = FrameAnalyzer(pl, sch, perf)
+        analyzer = FrameAnalyzer(pl, sch, perf, ::onFrameStats)
     }
 
     private fun onPerception(p: Perception) {
@@ -178,7 +191,7 @@ class AdasController(
         val video = config.videoTestMode
         val speed = if (video) config.videoTestSpeedKph / 3.6f else location.speedMps
         motion.longAccel = location.longAccel
-        val result = f.update(
+        val raw = f.update(
             p = p,
             speedMps = speed,
             yawRate = if (motion.hasGyro && !video) motion.yawRate else 0f,
@@ -186,8 +199,17 @@ class AdasController(
             inputPx = modelInputPx,
             nowMs = nowMs,
         )
-        alerts.onResult(result, nowMs)
-        accuracyLog?.record(nowMs, result)
+        // Camera self-check: mount verdict from the IMU; a blocked lens suspends collision warnings.
+        cameraHealth.onMount(
+            nowMs, motion.mount.pitchRad,
+            Math.toDegrees(kotlin.math.atan(motion.mount.rollTan.toDouble())).toFloat(),
+            streamIntrinsics.verticalFovDeg, enabled = !video && motion.available,
+        )
+        val health = cameraHealth.health
+        val result = if (health.blocked) CameraHealthMonitor.suppressFcw(raw) else raw
+        if (nowMs - lastBatteryMs >= BATTERY_POLL_MS) { lastBatteryMs = nowMs; readBattery() }
+        alerts.onResult(result, nowMs, speed * 3.6f)
+        accuracyLog?.record(nowMs, raw) // raw measurements, before any warning suppression
         for (e in result.events) diagEvents.append(e.type.name).append(':').append(e.severity.name.take(4)).append(' ')
         if (nowMs - lastDiagMs >= 1000L) { lastDiagMs = nowMs; logDiag(result, speed); diagEvents.setLength(0) }
         val rcChanged = rangeCheck.onResult(result, nowMs)
@@ -217,7 +239,38 @@ class AdasController(
             mountRollDeg = Math.toDegrees(kotlin.math.atan(motion.mount.rollTan.toDouble())).toFloat(),
             mountConvergence = motion.mount.convergence,
             rangeCheck = rangeCheck.state,
+            cameraHealth = health,
         )
+    }
+
+    /** Analyzer-thread hook: cheap per-frame image statistics for the blocked-lens check. */
+    private fun onFrameStats(s: FrameStats) {
+        val before = cameraHealth.health
+        val after = cameraHealth.onFrame(System.currentTimeMillis(), s.meanLuma, s.lumaStd, s.detail, ambientNight = light.isNight)
+        if (after != before) {
+            Log.i(TAG, "camera health: $after (luma=%.0f sd=%.1f detail=%.1f)".format(s.meanLuma, s.lumaStd, s.detail))
+            _state.value = _state.value.copy(cameraHealth = after)
+        }
+    }
+
+    /** Battery level/charging from the sticky ACTION_BATTERY_CHANGED intent (no receiver kept). */
+    private fun readBattery() {
+        try {
+            val i = context.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return
+            val level = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val scale = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+            val status = i.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+            val plugged = i.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0)
+            batteryPct = if (level >= 0 && scale > 0) level * 100 / scale else null
+            charging = plugged != 0 || status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == android.os.BatteryManager.BATTERY_STATUS_FULL
+            pushDeviceHints()
+        } catch (t: Throwable) { Log.w(TAG, "battery read failed", t) }
+    }
+
+    private fun pushDeviceHints() {
+        val hints: List<DeviceHint> = DeviceGuidance.hints(batteryPct, charging, DeviceGuidance.thermalStatusFromLabel(perf.thermal))
+        if (hints != _state.value.deviceHints) _state.value = _state.value.copy(deviceHints = hints)
     }
 
     /** 1 Hz pipeline summary for bench/road testing: `adb logcat | grep Lyne/Diag`. */
@@ -332,6 +385,8 @@ class AdasController(
     }
 
     fun isOnboarded(): Boolean = settings.onboarded
+    fun needsDisclaimer(): Boolean = com.lyne.adas.l1.config.SafetyDisclaimer.needsAcceptance(settings.disclaimerAcceptedVersion)
+    fun acceptDisclaimer() { settings.disclaimerAcceptedVersion = com.lyne.adas.l1.config.SafetyDisclaimer.VERSION }
     fun setOnboarded() { settings.onboarded = true }
     fun currentConfig(): AdasConfig = config
 
@@ -487,6 +542,8 @@ class AdasController(
         private const val DEFAULT_PITCH_RAD = 0.05f
         /** Dashcam footage usually has the horizon slightly above centre. */
         private const val VIDEO_PITCH_RAD = 0.03f
+        /** Battery is read from the sticky intent at most this often. */
+        private const val BATTERY_POLL_MS = 30_000L
     }
 }
 

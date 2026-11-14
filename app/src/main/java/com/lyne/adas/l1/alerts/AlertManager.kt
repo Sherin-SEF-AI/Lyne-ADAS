@@ -38,20 +38,25 @@ class AlertManager(context: Context) {
     @Volatile var muted = false
     @Volatile var voiceEnabled = true
 
-    fun onResult(result: FusionResult, nowMs: Long) {
-        if (muted) return
+    /**
+     * @param speedKph current speed (null/NaN = unknown). Mute never silences a CRITICAL alert while
+     * moving: see [MutePolicy].
+     */
+    fun onResult(result: FusionResult, nowMs: Long, speedKph: Float? = null) {
         var onsetCritical = false
         for (e in result.events) {
+            if (!MutePolicy.audible(e.severity, muted, speedKph)) continue
             when {
                 e.type == AlertType.LEAD_GO -> { chime(); if (voiceEnabled) voice.say(e.type, e.severity, e.speedLimitKph) }
                 e.severity == Severity.CRITICAL -> onsetCritical = true
                 e.severity == Severity.CAUTION -> { beep(critical = false); vibrate(longArrayOf(0, 80)) }
             }
-            if (voiceEnabled && e.type != AlertType.LEAD_GO && e.severity.ordinal >= Severity.CAUTION.ordinal) {
+            // Muted: critical alerts keep tone + haptics only (no speech).
+            if (!muted && voiceEnabled && e.type != AlertType.LEAD_GO && e.severity.ordinal >= Severity.CAUTION.ordinal) {
                 voice.say(e.type, e.severity, e.speedLimitKph)
             }
         }
-        val critActive = result.topSeverity == Severity.CRITICAL
+        val critActive = result.topSeverity == Severity.CRITICAL && MutePolicy.audible(Severity.CRITICAL, muted, speedKph)
         if (onsetCritical || (critActive && nowMs - lastCriticalMs > CRITICAL_REPEAT_MS)) {
             lastCriticalMs = nowMs
             beep(critical = true)

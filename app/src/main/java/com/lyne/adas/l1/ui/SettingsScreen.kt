@@ -45,6 +45,8 @@ fun SettingsScreen(
     onTogglePerf: () -> Unit,
     onShareAccuracyLog: () -> Unit,
     onClose: () -> Unit,
+    /** Extra cards supplied by the host (e.g. the car Bluetooth reminder). */
+    extraCards: @Composable () -> Unit = {},
 ) {
     val p = palette()
     var showAdvanced by remember { mutableStateOf(false) }
@@ -72,6 +74,8 @@ fun SettingsScreen(
             }
             SwitchRow("Performance overlay", "FPS, latency and memory in the corner", state.showPerf) { onTogglePerf() }
         }
+
+        extraCards()
 
         Card("Recording & data") {
             SwitchRow("Event dashcam", "Keeps a clip around every critical warning", config.dashcamEnabled) {
