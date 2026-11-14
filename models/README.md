@@ -75,7 +75,7 @@ licensed CC BY 4.0. Both are gated (access is granted immediately): run `hf auth
 
 ```bash
 P=models/train/train_indian.py            # data lives in $LYNE_DATA (default ~/.cache/lyne-data)
-python $P download --shards 15            # ~1,000 frames per shard, spread over the dataset + benchmark
+python $P download --shards 15            # first 15 shards (~1,000 frames each) + benchmark; --spread to sample wider
 python $P prepare                         # -> YOLO dataset, long side 640, split by clip
 python $P train --epochs 60               # imgsz 320, CPU defaults; re-run the same command to resume
 python $P eval                            # fine-tuned vs stock COCO, per-class AP + official scorer

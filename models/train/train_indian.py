@@ -18,7 +18,7 @@ Data: CC BY 4.0, ThirdEye Labs. Both datasets are gated (access is granted immed
 `hf auth login` and click "Get access" on each dataset page first.
 
 Examples
-  python models/train/train_indian.py download --shards 13
+  python models/train/train_indian.py download --shards 15
   python models/train/train_indian.py prepare
   python models/train/train_indian.py train --epochs 60
   python models/train/train_indian.py eval
@@ -842,8 +842,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("download", help="download training shards + benchmark from Hugging Face")
-    p.add_argument("--shards", type=int, default=13, help="training shards (~1000 frames each); 0 = none")
-    p.add_argument("--no-spread", dest="spread", action="store_false", help="take the first N shards instead of spreading them")
+    p.add_argument("--shards", type=int, default=15, help="training shards (~1000 frames, ~17 clips each); 0 = none")
+    p.add_argument("--spread", action="store_true",
+                   help="spread the N shards over the whole dataset instead of taking the first N (more clips, but "
+                        "does not reuse shards an earlier contiguous download already fetched)")
     p.add_argument("--skip-benchmark", action="store_true")
     p.set_defaults(fn=cmd_download)
 
