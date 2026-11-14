@@ -140,6 +140,7 @@ class CameraHealthMonitor(
                     if (s.ordinal > top.ordinal && s.ordinal >= Severity.CAUTION.ordinal) { top = s; topType = t; topMsg = m }
                 }
                 consider(r.vru, AlertType.VRU, if (r.vru == Severity.CRITICAL) "PEDESTRIAN / RIDER" else "ROAD USER AHEAD")
+                consider(r.animal, AlertType.ANIMAL, "ANIMAL AHEAD")
                 consider(r.headway, AlertType.HEADWAY, "KEEP DISTANCE")
                 consider(r.ldw, AlertType.LDW, "LANE DEPARTURE")
                 consider(r.overspeed, AlertType.OVERSPEED, "SPEED LIMIT ${r.speedLimitKph ?: ""}")
