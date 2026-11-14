@@ -20,4 +20,8 @@ data class Perception(
      * callback (the bitmap is recycled right after); used for cheap pixel cues such as brake lights.
      */
     val frame: CameraFrame? = null,
+    /** Painted lane lines from the classical detector (runs with every object frame when LDW is on). */
+    val laneLines: LaneLines = LaneLines.NONE,
+    /** Square input edge (px) of the object model that produced [detections]; 0 = unknown. */
+    val objectInputPx: Int = 0,
 )

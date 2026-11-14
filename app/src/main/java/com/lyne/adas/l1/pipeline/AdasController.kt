@@ -139,9 +139,8 @@ class AdasController(
         if (location.hasPermission()) location.start()
         if (motion.available) { motion.speedEstimator = location.estimator; motion.start() }
         light.start { night -> nightAuto = night; pushNight() }
-        thermal.start { multiplier, label ->
-            scheduler?.setCadenceMultiplier(multiplier)
-            perf.cadenceMultiplier = multiplier
+        thermal.start { status, label ->
+            scheduler?.setThermalStatus(status)
             perf.thermal = label
             pushDeviceHints()
         }
@@ -194,6 +193,9 @@ class AdasController(
         val speed = if (video) config.videoTestSpeedKph / 3.6f else location.fusedSpeedMps
         val speedEstimated = !video && location.speedEstimated
         motion.longAccel = location.longAccel
+        val geom = geometry(f)
+        // The lane-line detector measures in metres with the same geometry (used from the next frame on).
+        scheduler?.setLaneGeometry(geom.horizonY(0.5f), geom.tanHalfH, geom.tanHalfV, geom.cameraHeightM)
         // The pooled frame is only valid during this callback: expose it to the brake-light sampler
         // for the duration of the fusion step.
         leadSampler.bitmap = p.frame?.bitmap
@@ -202,8 +204,8 @@ class AdasController(
                 p = p,
                 speedMps = speed,
                 yawRate = if (motion.hasGyro && !video) motion.yawRate else 0f,
-                geom = geometry(f),
-                inputPx = modelInputPx,
+                geom = geom,
+                inputPx = if (p.objectInputPx > 0) p.objectInputPx else modelInputPx,
                 nowMs = nowMs,
                 pixels = leadSampler,
             )
@@ -289,13 +291,18 @@ class AdasController(
             "${o.cls.name.take(3)}#${o.id}${if (o.isLead) "*" else ""}" +
                 (o.distanceM?.let { "@%.0f".format(it) } ?: "") + (if (o.inPath) "P" else "")
         }
-        Log.i("Diag", "fps=%.1f v=%s%s raw=%d trk=%d lead=%s±%s cl=%s ttc=%s fcw=%s vru=%s hw=%s ldw=%s top=%s ev=%s | %s".format(
-            perf.snapshot().fps, if (speedMps.isNaN()) "NaN" else "%.0f".format(speedMps * 3.6f),
+        val ps = perf.snapshot()
+        val ll = r.laneLines
+        Log.i("Diag", "fps=%.1f th=%s deg=%s v=%s%s raw=%d trk=%d lead=%s±%s cl=%s ttc=%s fcw=%s vru=%s hw=%s ldw=%s lane=%s(lines %.2f %s/%s off=%s) top=%s ev=%s | %s".format(
+            ps.fps, ps.thermal, ps.degradeLabel, if (speedMps.isNaN()) "NaN" else "%.0f".format(speedMps * 3.6f),
             if (!config.videoTestMode && location.speedEstimated) "~" else "",
             r.detections.size, r.objects.size,
             r.leadDistanceM?.let { "%.1f".format(it) } ?: "-", r.leadSigmaM?.let { "%.1f".format(it) } ?: "-",
             r.leadClosingMps?.let { "%.1f".format(it) } ?: "-", r.ttcSec?.let { "%.1f".format(it) } ?: "-",
-            r.fcw, r.vru, r.headway, r.ldw, (r.topMessage ?: "-") + (if (r.leadBraking) " [BRK]" else ""),
+            r.fcw, r.vru, r.headway, r.ldw,
+            r.laneSource.name, ll.confidence, if (ll.hasLeft) "%.1f".format(ll.leftM) else "-",
+            if (ll.hasRight) "%.1f".format(ll.rightM) else "-", r.laneOffset?.let { "%.2f".format(it) } ?: "-",
+            (r.topMessage ?: "-") + (if (r.leadBraking) " [BRK]" else ""),
             diagEvents.toString().trim().ifEmpty { "-" }, objs))
     }
 

@@ -41,6 +41,7 @@ class FusionEngine(
 
     private var leadId = -1
     private val brakeLights = BrakeLightDetector()
+    private var lastLaneSource = LaneSource.NONE
     private var lastLeadBox: BBox? = null
 
     // Stop-and-go ("traffic moving") state.
@@ -217,11 +218,27 @@ class FusionEngine(
         // --- LDW ---
         var ldwRaw = Severity.NONE
         var laneOffset: Float? = null
+        var laneConf = p.lane.confidence
+        var laneSource = LaneSource.NONE
         if (features.ldw) {
-            val r = ldw.update(p.lane, laneOffsetFor(p.lane, geom), yawRate, laneCurvature(p.lane), p.timestampNs)
+            // Painted lane lines when they are confidently tracked; otherwise the drivable-area/road-edge path.
+            val lines = p.laneLines
+            val useLines = lines.confidence >= config.ldwMinLaneConfidence && !lines.offset.isNaN()
+            laneSource = when {
+                useLines -> LaneSource.LINES
+                p.lane.confidence >= config.ldwMinLaneConfidence -> LaneSource.ROAD
+                else -> LaneSource.NONE
+            }
+            if (laneSource != lastLaneSource) { ldw.resetHistory(); lastLaneSource = laneSource }
+            val r = if (useLines) {
+                laneConf = lines.confidence
+                ldw.update(lines.confidence, lines.offset, yawRate, lines.curvature, p.timestampNs)
+            } else {
+                ldw.update(p.lane, laneOffsetFor(p.lane, geom), yawRate, laneCurvature(p.lane), p.timestampNs)
+            }
             // Lane departure only means something while actually driving.
             ldwRaw = if (!speedMps.isNaN() && speedMps < MIN_LDW_SPEED_MPS) Severity.NONE else r.severity
-            laneOffset = if (p.lane.confidence >= config.ldwMinLaneConfidence) r.offset else null
+            laneOffset = if (laneSource != LaneSource.NONE) r.offset else null
         }
 
         // --- Overspeed ---
@@ -269,7 +286,7 @@ class FusionEngine(
             bbox = animalBox, distanceM = animalDist, speedKph = speedKph.orNull(),
         )
         if (ldwGate.update(ldwRaw, nowMs)) events += AdasEvent(
-            AlertType.LDW, ldwGate.active, nowMs, p.lane.confidence, "LANE DEPARTURE", laneOffset = laneOffset,
+            AlertType.LDW, ldwGate.active, nowMs, laneConf, "LANE DEPARTURE", laneOffset = laneOffset,
             speedKph = speedKph.orNull(),
         )
         if (overspeedGate.update(overspeedRaw, nowMs)) events += AdasEvent(
@@ -331,6 +348,8 @@ class FusionEngine(
             speedKph = speedKph.orNull(),
             speedLimitKph = speedLimit,
             laneOffset = laneOffset,
+            laneLines = p.laneLines,
+            laneSource = laneSource,
             fcw = fcw, vru = vru, ldw = ldwSev, headway = headway, overspeed = ovs,
             topSeverity = top, topType = topType, topMessage = topMsg,
             horizonLeftY = geom.horizonY(0f), horizonRightY = geom.horizonY(1f),
@@ -459,7 +478,7 @@ class FusionEngine(
     }
 
     fun reset() {
-        tracker.reset(); leadId = -1; brakeLights.reset()
+        tracker.reset(); leadId = -1; brakeLights.reset(); lastLaneSource = LaneSource.NONE; ldw.resetHistory()
         fcwGate.reset(); headwayGate.reset(); vruGate.reset(); ldwGate.reset(); overspeedGate.reset(); stopGate.reset()
         animalGate.reset(); lowLightEst.reset()
     }

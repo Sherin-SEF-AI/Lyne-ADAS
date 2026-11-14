@@ -2,6 +2,7 @@ package com.lyne.adas.l1.fusion
 
 import com.lyne.adas.l1.inference.BBox
 import com.lyne.adas.l1.inference.Detection
+import com.lyne.adas.l1.inference.LaneLines
 import com.lyne.adas.l1.inference.LaneResult
 import com.lyne.adas.l1.inference.ObjectClass
 
@@ -18,6 +19,9 @@ data class TrackedObject(
     /** Lead only: brake lights on. */
     val braking: Boolean = false,
 )
+
+/** Where the LDW lateral offset came from this frame. */
+enum class LaneSource { NONE, LINES, ROAD }
 
 /** Everything the HUD needs for one frame, plus the discrete events emitted this frame. */
 data class FusionResult(
@@ -56,6 +60,9 @@ data class FusionResult(
     val lowLight: Boolean = false,
     /** Brake lights detected on the lead vehicle (classical red-lamp cue). */
     val leadBraking: Boolean = false,
+    /** Painted lane lines (drawn as thin lines when confident). */
+    val laneLines: LaneLines = LaneLines.NONE,
+    val laneSource: LaneSource = LaneSource.NONE,
 ) {
     companion object {
         fun empty(frameId: Long, lane: LaneResult) = FusionResult(

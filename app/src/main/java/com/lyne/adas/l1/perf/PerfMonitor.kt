@@ -16,8 +16,10 @@ data class PerfSnapshot(
     val backend: Backend,
     val tierName: String,
     val inputResolution: Int,
-    val cadenceMultiplier: Int,
     val thermal: String,
+    /** Thermal degradation level (0 = full pipeline) and a short description of what is shed. */
+    val degradeLevel: Int = 0,
+    val degradeLabel: String = "full",
 )
 
 /**
@@ -36,8 +38,9 @@ class PerfMonitor {
     @Volatile var backend: Backend = Backend.XNNPACK_CPU
     @Volatile var tierName: String = "?"
     @Volatile var inputResolution: Int = 0
-    @Volatile var cadenceMultiplier: Int = 1
     @Volatile var thermal: String = "none"
+    @Volatile var degradeLevel: Int = 0
+    @Volatile var degradeLabel: String = "full"
 
     private val alpha = 0.15f
 
@@ -65,6 +68,9 @@ class PerfMonitor {
         totalMsEma = if (totalMsEma == 0f) totalMs else totalMsEma + alpha * (totalMs - totalMsEma)
     }
 
+    /** Current processed-frame rate (EMA) without building a snapshot. */
+    fun snapshotFps(): Float = fpsEma
+
     fun snapshot(): PerfSnapshot {
         val rt = Runtime.getRuntime()
         val usedMb = ((rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)).toInt()
@@ -80,8 +86,9 @@ class PerfMonitor {
             backend = backend,
             tierName = tierName,
             inputResolution = inputResolution,
-            cadenceMultiplier = cadenceMultiplier,
             thermal = thermal,
+            degradeLevel = degradeLevel,
+            degradeLabel = degradeLabel,
         )
     }
 }

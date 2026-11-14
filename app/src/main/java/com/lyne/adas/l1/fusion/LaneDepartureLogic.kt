@@ -21,8 +21,12 @@ class LaneDepartureLogic(private val config: AdasConfig) {
      * On a bend the offset naturally grows, so we relax the warn threshold proportionally to avoid
      * false departures through curves.
      */
-    fun update(lane: LaneResult, offsetIn: Float, yawRate: Float, curvature: Float, timestampNs: Long): LaneDepartureResult {
-        if (lane.confidence < config.ldwMinLaneConfidence) {
+    fun update(lane: LaneResult, offsetIn: Float, yawRate: Float, curvature: Float, timestampNs: Long): LaneDepartureResult =
+        update(lane.confidence, offsetIn, yawRate, curvature, timestampNs)
+
+    /** Source-agnostic form: [confidence] of whichever lane source produced [offsetIn]. */
+    fun update(confidence: Float, offsetIn: Float, yawRate: Float, curvature: Float, timestampNs: Long): LaneDepartureResult {
+        if (confidence < config.ldwMinLaneConfidence || offsetIn.isNaN()) {
             lastOffset = Float.NaN
             return LaneDepartureResult(Severity.NONE, offsetIn, suppressed = false)
         }
@@ -51,6 +55,9 @@ class LaneDepartureLogic(private val config: AdasConfig) {
             else -> LaneDepartureResult(Severity.NONE, offset, suppressed = false)
         }
     }
+
+    /** Forget the offset history (lane source switched: the two offsets are not comparable). */
+    fun resetHistory() { lastOffset = Float.NaN; lastTimeNs = 0L }
 
     companion object {
         // ~0.35 rad/s yaw is a clearly intentional turn, not a drift.
