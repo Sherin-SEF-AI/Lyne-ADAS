@@ -13,4 +13,8 @@ data class Perception(
     val objectBackend: Backend,
     val ranLaneThisFrame: Boolean,
     val ranSignThisFrame: Boolean,
+    /** Painted lane lines from the classical detector (runs with every object frame when LDW is on). */
+    val laneLines: LaneLines = LaneLines.NONE,
+    /** Square input edge (px) of the object model that produced [detections]; 0 = unknown. */
+    val objectInputPx: Int = 0,
 )

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
 import com.lyne.adas.l1.fusion.FusionResult
+import com.lyne.adas.l1.fusion.LaneSource
 import com.lyne.adas.l1.fusion.Severity
 import com.lyne.adas.l1.fusion.TrackedObject
 import androidx.compose.ui.graphics.PathEffect
@@ -49,6 +50,7 @@ fun HudOverlay(
             if (result.lane.mask != null) drawMask(result, map, palette, phase)
             else drawCarpet(result, map, palette, phase)
         }
+        drawLaneLines(result, map, palette)
         if (showHorizon) drawHorizon(result, map, palette)
         for (o in result.objects) drawObject(o, result, map, palette, measurer)
         drawDepartureArrow(result, palette)
@@ -93,6 +95,23 @@ private fun DrawScope.drawCarpet(result: FusionResult, map: Mapper, p: LynePalet
     // Forward-scrolling chevrons along the lane centre.
     drawChevrons(lane.rows, left, right, map, near, phase)
 }
+
+/** Detected painted lane lines as thin lines (only while confidently tracked). */
+private fun DrawScope.drawLaneLines(result: FusionResult, map: Mapper, p: LynePalette) {
+    val lines = result.laneLines
+    if (lines.confidence < LANE_LINE_MIN_CONF) return
+    val sev = if (result.laneSource == LaneSource.LINES) result.ldw else Severity.NONE
+    val color = when (sev) {
+        Severity.CRITICAL -> p.critical
+        Severity.CAUTION -> p.caution
+        else -> p.text
+    }.copy(alpha = 0.85f)
+    val stroke = 2f * density
+    drawPolyline(lines.rows, lines.leftX, color, map, stroke)
+    drawPolyline(lines.rows, lines.rightX, color, map, stroke)
+}
+
+private const val LANE_LINE_MIN_CONF = 0.40f
 
 /** Render the actual drivable-area segmentation mask as a smoothed translucent green overlay. */
 private fun DrawScope.drawMask(result: FusionResult, map: Mapper, p: LynePalette, phase: Float) {

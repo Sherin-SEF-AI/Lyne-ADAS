@@ -11,6 +11,15 @@ class DetectorSet(
     val obj: Detector<List<Detection>>,
     val lane: Detector<LaneResult>,
     val sign: Detector<SignResult>,
+    /** Classical painted-lane-line detector (null when LDW is off). */
+    val lines: LaneLineDetector? = null,
+    /** Input edge (px) of [obj]. */
+    val objInputPx: Int = 0,
+    /**
+     * Builds the smaller object model on demand for the last thermal degradation step; null when [obj]
+     * already is the small variant. Called on the inference thread.
+     */
+    val smallObjFactory: (() -> Detector<List<Detection>>?)? = null,
 ) {
     val anyStub: Boolean get() = obj.isStub || lane.isStub || sign.isStub
     fun close() { runCatching { obj.close() }; runCatching { lane.close() }; runCatching { sign.close() } }
@@ -23,6 +32,8 @@ class DetectorSet(
  */
 object DetectorProvider {
     private const val TAG = "DetectorProvider"
+    const val FULL_INPUT_PX = 320
+    const val NANO_INPUT_PX = 256
 
     fun build(context: Context, config: AdasConfig, profile: TierProfile): DetectorSet {
         val objPath = if (profile.useNanoModels) config.objectModelNano else config.objectModel
@@ -56,8 +67,17 @@ object DetectorProvider {
             else null
         } ?: StubSignDetector(config)
 
-        Log.i(TAG, "detectors: obj=${obj.name}(stub=${obj.isStub}) lane=${lane.name}(stub=${lane.isStub}) sign=${sign.name}(stub=${sign.isStub})")
-        return DetectorSet(obj, lane, sign)
+        val lines = if (profile.features.ldw) LaneLineDetector() else null
+
+        // Last thermal step: the nano object model, if the tier normally runs the full one.
+        val nanoPath = config.objectModelNano
+        val smallFactory: (() -> Detector<List<Detection>>?)? =
+            if (!profile.useNanoModels && !obj.isStub && ModelAssets.exists(context, nanoPath)) {
+                { tryBuild("object-small") { ObjectDetector(context, nanoPath, config.objectLabels, config, pref, threads) } }
+            } else null
+
+        Log.i(TAG, "detectors: obj=${obj.name}(stub=${obj.isStub}) lane=${lane.name}(stub=${lane.isStub}) sign=${sign.name}(stub=${sign.isStub}) lines=${lines != null}")
+        return DetectorSet(obj, lane, sign, lines, if (profile.useNanoModels) NANO_INPUT_PX else FULL_INPUT_PX, smallFactory)
     }
 
     private inline fun <T> tryBuild(which: String, block: () -> T?): T? = try {

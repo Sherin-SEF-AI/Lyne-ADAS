@@ -50,6 +50,8 @@ fun StatusStrip(state: AdasUiState) {
             Text(if (live) "LIVE" else "DEMO", color = p.text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             if (state.videoTest) Text("VIDEO TEST", color = p.caution, fontSize = 11.sp, fontWeight = FontWeight.Black)
             Text("· TIER ${state.tier.name} · ${state.perf?.backend?.name ?: "--"}", color = p.textDim, fontSize = 11.sp)
+            val deg = state.perf?.degradeLevel ?: 0
+            if (deg > 0) Text("HOT L$deg", color = p.caution, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -103,6 +105,8 @@ fun PerfPanel(perf: PerfSnapshot) {
         Text("${"%.1f".format(perf.fps)} FPS", color = p.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         Text("tot ${"%.0f".format(perf.totalMs)}ms  obj ${stage(perf, "object")} lane ${stage(perf, "lane")}", color = p.textDim, fontSize = 10.sp)
         Text("drop ${perf.droppedFrames}  heap ${perf.heapUsedMb}/${perf.heapMaxMb}MB  th ${perf.thermal}", color = p.textDim, fontSize = 10.sp)
+        Text("lines ${stage(perf, "lines")}ms  sign ${stage(perf, "sign")}  deg ${perf.degradeLabel}",
+            color = if (perf.degradeLevel > 0) p.caution else p.textDim, fontSize = 10.sp)
     }
 }
 
