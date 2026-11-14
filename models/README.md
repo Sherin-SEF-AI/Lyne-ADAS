@@ -54,6 +54,55 @@ For true **Indian-road** accuracy, fine-tune on the India Driving Dataset (IDD) 
 in this build: `models/convert/finetune_idd.py` (download IDD, build drivable masks, fine-tune the
 DA head), then re-run `convert_twinlite.py` to refresh the bundled tflite.
 
+## Indian-roads object detector (training pipeline)
+
+[`models/train/train_indian.py`](train/train_indian.py) fine-tunes YOLOv8n (COCO weights) for Indian
+traffic and exports it in the app's format. Output classes, in model order (these exact strings go
+into `object_labels.txt`):
+
+`person, rider, bicycle, motorcycle, autorickshaw, car, truck, bus, animal`
+
+Data (both CC BY 4.0, **ThirdEye Labs**):
+- Training: [Indian Road Driving Dataset](https://huggingface.co/datasets/thirdeyelabs/indian-road-dataset)
+  (Delhi NCR dashcam keyframes, day/dusk/night/rain). Its labels are **machine-generated pseudo-labels**
+  (YOLO11m fine-tuned on IDD + ByteTrack, each box with a `confidence`), not human-verified.
+- Test: [Indian Road Detection Benchmark](https://huggingface.co/datasets/thirdeyelabs/indian-road-benchmark)
+  dev split, 450 frames labelled twice by people; never used for training or model selection.
+
+Attribution: "Indian Road Driving Dataset" and "Indian Road Detection Benchmark" by ThirdEye Labs,
+licensed CC BY 4.0. Both are gated (access is granted immediately): run `hf auth login` and click
+**Get access** on both dataset pages.
+
+```bash
+P=models/train/train_indian.py            # data lives in $LYNE_DATA (default ~/.cache/lyne-data)
+python $P download --shards 15            # first 15 shards (~1,000 frames each) + benchmark; --spread to sample wider
+python $P prepare                         # -> YOLO dataset, long side 640, split by clip
+python $P train --epochs 60               # imgsz 320, CPU defaults; re-run the same command to resume
+python $P eval                            # fine-tuned vs stock COCO, per-class AP + official scorer
+python $P export                          # INT8 TFLite @320 and @256 + object_labels.txt
+python $P smoke                           # offline wiring check (synthetic data, 1 epoch, export)
+python -m unittest discover -s models/train -p 'test_*.py'   # converter / mapping / AP unit tests
+```
+
+Choices made in `prepare` (all flags):
+- `traffic light` / `traffic sign` are dropped (Lyne reads signs with its own classifier).
+- `vehicle fallback` -> `car` by default (`--fallback drop` to discard): for a collision warning an
+  unclassified vehicle should still be a vehicle. In `eval` such benchmark boxes are ignore regions.
+- Pseudo-labels below `--min-score 0.5` are unsure. Dropping them would teach the model that those
+  objects are background, keeping them teaches mistakes, so by default (`--low-conf mask`) they are
+  painted grey (neither positive nor background); an unsure box overlapping a confident one is just
+  dropped so the confident object is never painted over. `--low-conf drop|skip-frame` are the alternatives.
+- Train/val split is by clip (drive), deterministic, 10 % val; settings are pinned per output dir so
+  a resumed `prepare` can never mix two splits.
+
+`eval` scores on the benchmark the way the official scorer does (one-pass boxes = ignore regions;
+a COCO model's person boxes also count for `rider`; COCO animal classes map to `animal`) and also
+runs the benchmark's own `evaluate.py` for the headline number. The published reference for
+stock YOLOv8n at its default 640 input is 19.3 mAP / 33.0 AP50 on dev; the app runs at 320/256, so the
+report also scores stock YOLOv8n at 320. `export` never overwrites app assets - it prints the `cp`
+commands. Swapping the labels file changes class order, so ship the `.tflite` files and
+`object_labels.txt` together.
+
 ## Conversion
 
 Install deps (a Python 3.10+ venv, off-device):

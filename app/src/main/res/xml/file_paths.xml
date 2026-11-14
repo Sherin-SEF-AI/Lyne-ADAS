@@ -3,4 +3,5 @@
     <external-files-path name="rovix" path="rovix/" />
     <external-files-path name="dashcam" path="dashcam/" />
     <external-files-path name="accuracy" path="accuracy/" />
+    <files-path name="crash" path="crash/" />
 </paths>
