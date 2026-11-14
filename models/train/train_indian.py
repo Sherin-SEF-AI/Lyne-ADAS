@@ -107,7 +107,7 @@ def map_category(name: str, fallback: str = "car") -> Optional[str]:
     return None
 
 
-def map_prediction_name(name: str) -> List[str]:
+def map_prediction_name(name: str, model_has_rider: bool = True) -> List[str]:
     """A model's class name -> target class(es) it is scored as.
 
     Works for the fine-tuned model (exact target names) and for a stock COCO model (COCO names,
@@ -115,6 +115,8 @@ def map_prediction_name(name: str) -> List[str]:
     scored for rider too - the same rule as the benchmark's official scorer.
     """
     n = norm_name(name)
+    if n == "person" and not model_has_rider:
+        return ["person", "rider"]
     if n in TARGET_CLASSES:
         return [n]
     if n in COCO_TO_TARGET:
@@ -630,7 +632,7 @@ def _predict(weights: str, images: List[Path], imgsz: int, device: str, conf: fl
             b = r.boxes
             out[p] = [(names[int(c)], float(s), tuple(float(v) for v in xy))
                       for c, s, xy in zip(b.cls.tolist(), b.conf.tolist(), b.xyxy.tolist())]
-    return out
+    return out, {norm_name(n) for n in model.names.values()}
 
 
 def _fmt(v: Optional[float]) -> str:
@@ -672,13 +674,14 @@ def cmd_eval(a) -> int:
     results = []
     for label, w, sz in runs:
         print(f"predicting: {label} ({w})", flush=True)
-        raw = _predict(w, paths, sz, a.device)
+        raw, model_names = _predict(w, paths, sz, a.device)
+        has_rider = "rider" in model_names
         preds: Dict[int, list] = defaultdict(list)
         official = []
         for p, dets in raw.items():
             iid = id_by_path[p]
             for name, s, box in dets:
-                for tgt in map_prediction_name(name):
+                for tgt in map_prediction_name(name, has_rider):
                     preds[iid].append((tgt, s, box))
                 x1, y1, x2, y2 = box
                 official.append({"image_id": iid, "category_name": norm_name(name), "bbox": [x1, y1, x2 - x1, y2 - y1], "score": s})
@@ -702,7 +705,9 @@ def cmd_eval(a) -> int:
           f"{len(paths)} frames, ground truth = boxes both labelling passes agreed on; one-pass boxes are ignore regions. "
           f"'vehicle fallback' boxes: {a.fallback_eval}. Traffic lights/signs are not scored here. "
           "A model without a rider class has its person boxes scored as rider too. Riders and autorickshaws "
-          "cannot be named by COCO models (autorickshaw = n/a / 0).", "",
+          "cannot be named by COCO models (autorickshaw = 0). The official scorer covers person, bicycle, car, "
+          "motorcycle, bus, truck, traffic light and animal (riders count as person); a model without a traffic-light "
+          "class scores 0 on that eighth of it.", "",
           "Data: Indian Road Detection Benchmark, ThirdEye Labs, CC BY 4.0.", "",
           "## Per-class AP50 / AP50-95 (%)", ""]
     hdr = "| class | " + " | ".join(r[0] for r in results) + " |"

@@ -61,6 +61,7 @@ class ClassMappingTest(unittest.TestCase):
         self.assertEqual(p("cow"), ["animal"])                  # stock COCO model
         self.assertEqual(p("dog"), ["animal"])
         self.assertEqual(p("person"), ["person"])
+        self.assertEqual(p("person", model_has_rider=False), ["person", "rider"])  # COCO: riders are people
         self.assertEqual(p("traffic light"), [])
         self.assertEqual(p("airplane"), [])
 
