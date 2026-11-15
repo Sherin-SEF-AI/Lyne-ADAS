@@ -610,7 +610,7 @@ def cmd_train(a) -> int:
         YOLO(a.weights).train(
             data=str(data), imgsz=a.imgsz, epochs=a.epochs, batch=a.batch, workers=a.workers,
             device=a.device, project=str((work / "runs").resolve()), name=a.name, exist_ok=True,
-            patience=a.patience, fraction=a.fraction,
+            patience=a.patience, fraction=a.fraction, lr0=a.lr0,
             cache=False if str(a.cache).lower() in ("false", "none", "0", "") else a.cache, seed=0, plots=False,
             # Left-hand traffic: a horizontal flip is still a plausible road scene for detection.
             fliplr=0.5, mosaic=1.0, close_mosaic=min(10, max(1, a.epochs // 5)),
@@ -876,6 +876,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--fraction", type=float, default=1.0, help="use a fraction of the train set")
     p.add_argument("--cache", default="disk", help="ultralytics image cache: ram, disk or False")
     p.add_argument("--fresh", action="store_true", help="ignore an existing last.pt and start over")
+    p.add_argument("--lr0", type=float, default=0.01, help="initial learning rate (lower, e.g. 0.002, for a second-stage fine-tune)")
     p.set_defaults(fn=cmd_train)
 
     p = sub.add_parser("eval", help="score fine-tuned vs stock model on the benchmark dev split")
