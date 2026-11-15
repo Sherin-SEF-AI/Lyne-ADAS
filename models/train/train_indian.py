@@ -697,7 +697,7 @@ def cmd_eval(a) -> int:
         off = None
         scorer = bench / "evaluate.py"
         if scorer.exists():
-            r = subprocess.run([sys.executable, "-I", str(scorer), str(ann), str(pj)], capture_output=True, text=True)
+            r = subprocess.run([sys.executable, "-E", "-P", str(scorer), str(ann), str(pj)], capture_output=True, text=True)
             off = (r.stdout + r.stderr).strip()
         results.append((label, w, per_cls, by_tod, off))
 
