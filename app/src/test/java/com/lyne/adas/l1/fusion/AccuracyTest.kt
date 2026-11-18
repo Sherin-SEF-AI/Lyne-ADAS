@@ -267,4 +267,32 @@ class AccuracyTest {
         val events = runSim(proj, listOf(ped), 10f, 15f, engine, step = { dt, _ -> ped.x = (ped.x + 1.2f * dt); 0f })
         assertEquals(0, events.count { it.type == AlertType.VRU })
     }
+
+    /**
+     * A pedestrian stepping off the kerb toward our lane (1.4 m/s) while we approach at 36 km/h. The
+     * warning must come from the predicted crossing, before they are inside the corridor.
+     */
+    @Test fun pedestrianSteppingOutIsWarnedBeforeEnteringThePath() {
+        val proj = Projector(seed = 47)
+        val ped = SimObject(z = 32f, x = 4.2f, width = 0.5f, height = 1.7f, cls = ObjectClass.PEDESTRIAN)
+        val engine = FusionEngine(AdasConfig.DEFAULT, VRU_ONLY, autoCalEnabled = false)
+        var warnX = Float.NaN; var warnTtr = Float.NaN
+        runSim(proj, listOf(ped), 3.0f, 8f, engine, step = { dt, _ -> ped.z -= 10f * dt; ped.x -= 1.4f * dt; 10f }) { _, r ->
+            if (warnX.isNaN() && r.vru.ordinal >= Severity.CAUTION.ordinal) { warnX = ped.x; warnTtr = ped.z / 10f }
+        }
+        println("pedestrian stepping out: first warning at lateral ${warnX} m, time-to-reach ${warnTtr} s")
+        // Ego corridor edge (half-width + margin + half the person) is ~1.5 m from centre.
+        assertTrue("no warning", !warnX.isNaN())
+        assertTrue("warned only once inside the path (x=$warnX)", warnX > 1.6f)
+        assertTrue("too late: $warnTtr s", warnTtr > 1.5f)
+    }
+
+    /** Someone walking along the pavement (parallel, 3.5 m to the side) is not a crossing threat. */
+    @Test fun pedestrianWalkingAlongThePavementIsNotCritical() {
+        val proj = Projector(seed = 53)
+        val ped = SimObject(z = 30f, x = 3.6f, width = 0.5f, height = 1.7f, cls = ObjectClass.PEDESTRIAN)
+        val engine = FusionEngine(AdasConfig.DEFAULT, VRU_ONLY, autoCalEnabled = false)
+        val events = runSim(proj, listOf(ped), 2.6f, 8f, engine, step = { dt, _ -> ped.z -= 10f * dt; 10f })
+        assertEquals(0, events.count { it.type == AlertType.VRU && it.severity == Severity.CRITICAL })
+    }
 }

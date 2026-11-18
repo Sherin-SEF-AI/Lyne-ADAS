@@ -51,6 +51,23 @@ class CorridorTest {
     }
 
     @Test
+    fun doesNotClimbIntoRoadsideVegetation() {
+        // Road trapezoid plus a "drivable" blob attached on the left that sweeps up and outward
+        // (segmentation leaking into a hedge/trees).
+        val m = mask()
+        for (y in 0 until h) {
+            val ny = (y + 0.5f) / h
+            if (ny < 0.2f || ny > 0.75f) continue
+            val reach = 0.25f - (0.75f - ny) * 0.4f      // further left the higher it goes
+            for (x in 0 until w) { val nx = (x + 0.5f) / w; if (nx > reach && nx < 0.5f) m[y * w + x] = 1 }
+        }
+        val c = Corridor.fromMask(m, w, h, topY = 0.25f)!!
+        for (i in 0 until c.length) {
+            if (c.rows[i] < 0.6f) assertTrue("leaked left at y=${c.rows[i]}: ${c.left[i]}", c.left[i] > 0.15f)
+        }
+    }
+
+    @Test
     fun stopsAtTheLeadVehicle() {
         val c = Corridor.fromMask(mask(), w, h, topY = 0.7f)!!
         for (i in 0 until c.length) assertTrue(c.rows[i] >= 0.7f - 1e-3f)

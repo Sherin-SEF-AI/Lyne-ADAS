@@ -32,7 +32,7 @@ class FusionEngine(
     private val hs = config.alertHoldScale
     private val fcwGate = AlertGate((300 * hs).toLong(), (200 * hs).toLong(), offMs = 600L)
     private val headwayGate = AlertGate((1800 * hs).toLong(), (900 * hs).toLong(), offMs = 1200L, rearmMs = 15_000L)
-    private val vruGate = AlertGate((300 * hs).toLong(), (200 * hs).toLong())
+    private val vruGate = AlertGate((220 * hs).toLong(), (150 * hs).toLong())
     private val ldwGate = AlertGate((450 * hs).toLong(), (300 * hs).toLong(), rearmMs = 6000L)
     private val overspeedGate = AlertGate(2500L, 1500L, offMs = 2000L, rearmMs = 30_000L)
     private val stopGate = AlertGate(400L, 300L, rearmMs = 10_000L)
@@ -178,12 +178,32 @@ class FusionEngine(
         var vruDist: Float? = null
         if (features.vru) {
             for (t in tracks) {
-                if (!t.cls.isVru || !t.confirmed || t.misses > 1) continue
+                if (!t.cls.isVru || t.misses > 1) continue
                 val d = t.distanceM; if (d.isNaN() || t.lateralM.isNaN()) continue
+                // A person close to the car can't wait for the usual 3-frame confirmation (~0.5 s at
+                // budget frame rates): two consecutive hits suffice within VRU_FAST_CONFIRM_M.
+                if (!t.confirmed && !(t.hits >= 2 && d < VRU_FAST_CONFIRM_M)) continue
                 val center = PathIntrusion.pathCenterM(d, speedMps, yawRate)
                 val half = RangeEstimator.widthPrior(t.cls) / 2f
-                val inEgo = PathIntrusion.overlapM(t.lateralM, half, center, PathIntrusion.EGO_HALF_M + 0.3f) > 0f
-                val inWide = PathIntrusion.overlapM(t.lateralM, half, center, PathIntrusion.EGO_HALF_M + 1.5f) > 0f
+                // Predict where they'll be when we get there: someone stepping off the kerb is a
+                // threat before they're inside the corridor. lateral = u * d, so
+                //   d(lateral)/dt = d * du/dt + u * dd/dt = d * du/dt - u * closing.
+                // (A person on a collision course holds a constant bearing: du/dt ~ 0 while the gap
+                // closes, and it's the second term that shows them heading for our path.) Not while
+                // turning: yaw sweeps everything sideways.
+                val vEgo = if (speedMps.isNaN()) 6f else speedMps
+                val vLat = if (t.hits >= 2 && abs(yawRate) < 0.15f) {
+                    val u = geom.lateralM(t.box.cx, 1f)
+                    val duD = geom.lateralM(t.box.cx + t.screenVx, d) - geom.lateralM(t.box.cx, d)
+                    val closingEst = if (t.kalman.updates >= 3 && !t.closingMps.isNaN()) t.closingMps else vEgo
+                    (duD - u * closingEst).coerceIn(-4f, 4f)
+                } else 0f
+                val tReach = (d / vEgo.coerceAtLeast(1.5f)).coerceIn(0f, PathIntrusion.VRU_PREDICT_HORIZON_S)
+                val latPred = t.lateralM + vLat * tReach
+                val movingIn = abs(latPred - center) < abs(t.lateralM - center) - 0.2f
+                val predIn = movingIn && PathIntrusion.overlapM(latPred, half, center, PathIntrusion.EGO_HALF_M + 0.3f) > 0f
+                val inEgo = predIn || PathIntrusion.overlapM(t.lateralM, half, center, PathIntrusion.EGO_HALF_M + 0.3f) > 0f
+                val inWide = predIn || PathIntrusion.overlapM(t.lateralM, half, center, PathIntrusion.EGO_HALF_M + 1.5f) > 0f
                 // Same fused looming + range-rate estimate as FCW; Kalman alone lags at low fps.
                 val ft = fusedTtc(t)
                 val closing = when {
@@ -490,6 +510,8 @@ class FusionEngine(
         /** Tailgating warnings only above ~30 km/h. */
         const val MIN_HEADWAY_SPEED_MPS = 8.3f
         const val MIN_LDW_SPEED_MPS = 11f
+        /** Within this range a VRU track counts after 2 hits instead of 3. */
+        const val VRU_FAST_CONFIRM_M = 15f
         /** Looming significance needed for CAUTION while the lead shows brake lights (else 2). */
         const val BRAKING_MIN_Z = 1.5f
         /** Extra CAUTION TTC window while the lead shows brake lights. */

@@ -21,6 +21,8 @@ class Corridor(val rows: FloatArray, val left: FloatArray, val right: FloatArray
     companion object {
         const val N = 32
         private const val BOTTOM = 0.99f
+        /** Max outward drift of a road edge per unit of image height going up (gentle curves only). */
+        private const val MAX_OUTWARD_SLOPE = 0.2f
 
         private fun sampleRows(topY: Float): FloatArray {
             val top = topY.coerceIn(0f, BOTTOM - 0.05f)
@@ -69,9 +71,17 @@ class Corridor(val rows: FloatArray, val left: FloatArray, val right: FloatArray
                     val c = (a + b) / 2f; val half = prevWidth / 2f
                     a = (c - half).toInt().coerceAtLeast(0); b = (c + half).toInt().coerceAtMost(w - 1)
                 }
-                left[i] = a.toFloat() / w; right[i] = (b + 1).toFloat() / w
-                prevWidth = b - a + 1
-                ref = (a + b) / 2
+                var l = a.toFloat() / w; var r = (b + 1).toFloat() / w
+                if (lastGood >= 0) {
+                    // Going away from the camera a road edge moves inward (or bends gently with a
+                    // curve). An edge sweeping outward fast is a leak into verge, hedge or trees.
+                    val maxOut = MAX_OUTWARD_SLOPE * (rows[lastGood] - rows[i])
+                    l = maxOf(l, left[lastGood] - maxOut); r = minOf(r, right[lastGood] + maxOut)
+                    if (r - l < 0.01f) { if (++gap > 3) break; continue }
+                }
+                left[i] = l; right[i] = r
+                prevWidth = maxOf(1, ((r - l) * w).toInt())
+                ref = (((l + r) / 2f) * w).toInt().coerceIn(0, w - 1)
                 lastGood = i; gap = 0
             }
             if (lastGood < 0) return null

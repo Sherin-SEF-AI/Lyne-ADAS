@@ -166,6 +166,11 @@ private fun DrawScope.drawLaneLines(result: FusionResult, map: Mapper, p: LynePa
 
 private const val LANE_LINE_MIN_CONF = 0.40f
 
+/** Vertical band (fraction of height) and width of the side gauges, which tags must avoid. */
+private const val GAUGE_BAND_TOP = 0.18f
+private const val GAUGE_BAND_BOTTOM = 0.80f
+private const val GAUGE_WIDTH_DP = 128f
+
 /** Height of the top strip used by the status, lead and alert cards. */
 private const val TOP_UI_BAND_DP = 84f
 
@@ -278,8 +283,11 @@ private fun DrawScope.drawTag(
     val w = padH * 2 + dot + (if (dot > 0) gap else 0f) + m.size.width + (s?.let { gap + it.size.width } ?: 0f)
     val h = padV * 2 + m.size.height
     var left = if (centered) x - w / 2f else x
-    left = left.coerceIn(2f, size.width - w - 2f)
     val top = (y - h).coerceIn(2f, size.height - h - 2f)
+    // Keep tags out from under the side gauges (TTC/headway on the left, speed on the right).
+    val gaugeBand = top + h > size.height * GAUGE_BAND_TOP && top < size.height * GAUGE_BAND_BOTTOM
+    val sideInset = if (gaugeBand) GAUGE_WIDTH_DP * density else 2f
+    left = if (size.width - 2 * sideInset > w) left.coerceIn(sideInset, size.width - w - sideInset) else left.coerceIn(2f, size.width - w - 2f)
     val bg = if (solid) color else Color(0xFF0A0E12).copy(alpha = 0.72f)
     drawRoundRect(bg.copy(alpha = bg.alpha * alpha), Offset(left, top), Size(w, h), CornerRadius(h / 2f))
     if (!solid) drawRoundRect(color.copy(alpha = 0.55f * alpha), Offset(left, top), Size(w, h), CornerRadius(h / 2f), style = Stroke(1f * density))

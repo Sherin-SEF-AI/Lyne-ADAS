@@ -11,6 +11,8 @@ import kotlin.math.abs
 object PathIntrusion {
     /** Ego vehicle half-width plus a small margin (m). */
     const val EGO_HALF_M = 0.95f
+    /** How far ahead (s) a VRU's sideways motion is extrapolated to test for path intrusion. */
+    const val VRU_PREDICT_HORIZON_S = 2.0f
 
     fun pathCenterM(depthM: Float, speedMps: Float, yawRate: Float): Float {
         if (speedMps.isNaN() || speedMps < 3f || abs(yawRate) < 0.02f) return 0f
@@ -37,9 +39,10 @@ object PathIntrusion {
         val v = if (egoSpeedMps.isNaN()) 6f else egoSpeedMps
         if (v < 1.5f) return if (distanceM < 12f) Severity.INFO else Severity.NONE
         if (closingMps.isNaN()) {
-            // Young track: distance-only, never more than a caution.
+            // Young track: distance-only, never more than a caution (someone walking with traffic
+            // keeps a constant gap; that needs the closing speed to tell apart).
             return when {
-                inEgo && (distanceM < 10f || distanceM / v < 2.5f) -> Severity.CAUTION
+                inEgo && (distanceM < 12f || distanceM / v < 3.0f) -> Severity.CAUTION
                 distanceM < 25f -> Severity.INFO
                 else -> Severity.NONE
             }

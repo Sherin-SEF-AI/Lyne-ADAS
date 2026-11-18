@@ -50,6 +50,8 @@ class Track(val id: Int, cls: ObjectClass, box: BBox, score: Float, nowNs: Long)
 
     // Image-plane motion (normalized units / s) of the box centre and log-width, for prediction.
     private var vx = 0f; private var vy = 0f; private var vs = 0f
+    /** Horizontal image velocity of the box centre (normalized widths / s), smoothed. */
+    val screenVx: Float get() = vx
 
     /**
      * Where this box should be at [nowNs], assuming its on-screen motion continues. At budget-phone
