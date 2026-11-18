@@ -208,7 +208,8 @@ images were added for animals and buses. On the held-out
 
 Distant street animals remain hard for both models, and stop signs are no longer detected (rare on
 Indian roads, and not in the training data). Training, cleaning and export scripts are in
-[models/train/](models/train/).
+[models/train/](models/train/); the weights (PyTorch, ONNX, INT8 TFLite) and a model card are in
+[models/weights/](models/weights/MODEL_CARD.md) and on the [v2.1.0 release](https://github.com/Sherin-SEF-AI/Lyne-ADAS/releases/tag/v2.1.0).
 
 ## Roadmap
 
