@@ -33,7 +33,7 @@ class LaneSourceTest {
 
     private val sourceAtLdw = ArrayList<LaneSource>()
 
-    private fun drive(seconds: Float, make: (Int, Float) -> Pair<LaneResult, LaneLines>): Pair<List<AdasEvent>, FusionResult> {
+    private fun drive(seconds: Float, speed: Float = this.speed, make: (Int, Float) -> Pair<LaneResult, LaneLines>): Pair<List<AdasEvent>, FusionResult> {
         val eng = FusionEngine(AdasConfig.DEFAULT, ldwOnly, autoCalEnabled = false)
         val events = ArrayList<AdasEvent>()
         var last: FusionResult? = null
@@ -62,6 +62,13 @@ class LaneSourceTest {
         val road = LaneResult(floatArrayOf(0.9f), floatArrayOf(0.2f), floatArrayOf(0.8f), 0f, 0.8f)
         val (ev, last) = drive(3f) { _, _ -> road to lines(0.2f, 1.2f) }
         assertEquals(LaneSource.ROAD, last.laneSource)
+        assertTrue("unexpected $ev", ev.none { it.type == AlertType.LDW })
+    }
+
+    @Test
+    fun unknownSpeedNoWarning() {
+        // No GPS fix (parked, indoors): floor or kerb edges can look like confident lines; never warn.
+        val (ev, _) = drive(3f, speed = Float.NaN) { _, _ -> LaneResult.EMPTY to lines(0.7f, -1.1f) }
         assertTrue("unexpected $ev", ev.none { it.type == AlertType.LDW })
     }
 

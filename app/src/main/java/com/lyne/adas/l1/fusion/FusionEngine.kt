@@ -237,7 +237,8 @@ class FusionEngine(
                 ldw.update(p.lane, laneOffsetFor(p.lane, geom), yawRate, laneCurvature(p.lane), p.timestampNs)
             }
             // Lane departure only means something while actually driving.
-            ldwRaw = if (!speedMps.isNaN() && speedMps < MIN_LDW_SPEED_MPS) Severity.NONE else r.severity
+            // Unknown speed (no GPS fix yet) also suppresses LDW: parked or indoors, floor and kerb edges read as lines.
+            ldwRaw = if (speedMps.isNaN() || speedMps < MIN_LDW_SPEED_MPS) Severity.NONE else r.severity
             laneOffset = if (laneSource != LaneSource.NONE) r.offset else null
         }
 
