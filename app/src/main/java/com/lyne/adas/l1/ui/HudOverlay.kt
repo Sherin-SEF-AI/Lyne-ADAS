@@ -30,8 +30,7 @@ import kotlin.math.abs
 
 /**
  * Automotive HUD overlay drawn over the camera preview:
- *  - the drivable corridor ahead as one smooth, softly lit shape (brand cyan near, fading to green
- *    and transparent far), cut off at the vehicle ahead, with faint forward-moving guide bands;
+ *  - the drivable corridor ahead as one smooth, solid green shape, cut off at the vehicle ahead;
  *  - detections as rounded brackets that glide between model updates and fade in/out; the lead
  *    vehicle gets a lit ground "footprint" (where range is measured from) and a distance tag;
  *  - painted lane lines and the lane-departure steer arrow.
@@ -62,7 +61,7 @@ fun HudOverlay(
             corridorCache[1] = buildCorridor(result)
         }
         val corridor = corridorSmoother.update(corridorCache[1] as Corridor?, now)
-        if (result != null && corridor != null) drawCorridor(corridor, result, map, palette, phase, corridorSmoother.alpha)
+        if (result != null && corridor != null) drawCorridor(corridor, result, map, palette, corridorSmoother.alpha)
         if (result != null) {
             drawLaneLines(result, map, palette)
             if (showHorizon) drawHorizon(result, map, palette)
@@ -97,13 +96,10 @@ private fun buildCorridor(r: FusionResult): Corridor? {
     }
 }
 
-private fun DrawScope.drawCorridor(c: Corridor, r: FusionResult, map: Mapper, p: LynePalette, phase: Float, vis: Float) {
+private fun DrawScope.drawCorridor(c: Corridor, r: FusionResult, map: Mapper, p: LynePalette, vis: Float) {
     val n = c.length
     if (n < 3) return
     val warn = when (r.ldw) { Severity.CRITICAL -> p.critical; Severity.CAUTION -> p.caution; else -> null }
-    val near = warn ?: p.laneNear
-    val far = warn ?: p.laneFar
-
     val lx = FloatArray(n) { map.x(c.left[it]) }; val rx = FloatArray(n) { map.x(c.right[it]) }
     val ys = FloatArray(n) { map.y(c.rows[it]) }
     val bottomY = ys[0]; val topY = ys[n - 1]
@@ -116,38 +112,13 @@ private fun DrawScope.drawCorridor(c: Corridor, r: FusionResult, map: Mapper, p:
     body.lineTo(rx[n - 1], ys[n - 1])
     smoothThrough(body, rx, ys, (n - 1) downTo 0)
     body.close()
-    drawPath(
-        body,
-        Brush.verticalGradient(
-            0f to far.copy(alpha = 0f),
-            0.35f to far.copy(alpha = 0.10f * vis),
-            1f to near.copy(alpha = 0.30f * vis),
-            startY = topY, endY = bottomY,
-        ),
-    )
-
-    // Edges: a soft glow under a crisp line, both fading toward the far end.
-    for (edge in arrayOf(lx, rx)) {
-        val path = Path().apply { moveTo(edge[0], ys[0]); smoothThrough(this, edge, ys, 0 until n) }
-        val glow = Brush.verticalGradient(0f to near.copy(alpha = 0f), 1f to near.copy(alpha = 0.28f * vis), startY = topY, endY = bottomY)
-        val line = Brush.verticalGradient(0f to far.copy(alpha = 0f), 0.5f to near.copy(alpha = 0.55f * vis), 1f to near.copy(alpha = 0.95f * vis), startY = topY, endY = bottomY)
-        drawPath(path, glow, style = Stroke(9f * density, cap = StrokeCap.Round, join = StrokeJoin.Round))
-        drawPath(path, line, style = Stroke(2.2f * density, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    }
-
-    // Forward-moving guide bands: thin, faint, perspective-spaced. Motion reads as "this is your path".
-    val bands = 4
-    for (k in 0 until bands) {
-        val t = ((k.toFloat() / bands) + phase) % 1f          // 0 near -> 1 far
-        val f = (n - 1) * (1f - (1f - t) * (1f - t))          // perspective: bunch up far away
-        val i = f.toInt().coerceIn(0, n - 2); val u = f - i
-        val y = ys[i] + (ys[i + 1] - ys[i]) * u
-        val a = lx[i] + (lx[i + 1] - lx[i]) * u; val b = rx[i] + (rx[i + 1] - rx[i]) * u
-        val inset = (b - a) * 0.08f
-        val alpha = (1f - t) * (if (t < 0.1f) t / 0.1f else 1f) * 0.35f * vis
-        drawLine(near.copy(alpha = alpha), Offset(a + inset, y), Offset(b - inset, y), (1f + 2f * (1f - t)) * density, cap = StrokeCap.Round)
-    }
+    // Solid, flat fill (segmentation-figure style): one clear colour for "drivable ahead".
+    drawPath(body, (warn ?: ROAD_GREEN).copy(alpha = ROAD_ALPHA * vis))
 }
+
+/** Bright segmentation green for the drivable corridor; amber/red replace it on lane departure. */
+private val ROAD_GREEN = Color(0xFF1EF23C)
+private const val ROAD_ALPHA = 0.72f
 
 /** Quadratic smoothing through points (midpoint method): no kinks from the row sampling. */
 private fun smoothThrough(path: Path, xs: FloatArray, ys: FloatArray, idx: IntProgression) {
