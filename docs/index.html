@@ -370,7 +370,7 @@ dialog.lb img{display:block;width:100%;height:auto}
       </figure>
       <figure class="g-item">
         <button type="button" data-full="img/drive-auto-bus.jpg" aria-label="Enlarge: mixed traffic"><img src="img/drive-auto-bus.jpg" width="960" height="452" loading="lazy" alt="Auto-rickshaw and bus alongside in an underpass, lead car at 14 metres plus or minus 1"></button>
-        <figcaption><h3>Mixed traffic <span class="chip cy">tracking</span></h3><p>An auto-rickshaw and a bus alongside; only the car in your path is the lead (14 m ±1). The general-purpose model calls the auto a "BUS", which an Indian-roads model on the roadmap will fix.</p></figcaption>
+        <figcaption><h3>Mixed traffic <span class="chip cy">tracking</span></h3><p>An auto-rickshaw and a bus alongside; only the car in your path is the lead (14 m ±1). The general-purpose model in this recording calls the auto a "BUS"; v2.1's Indian-roads detector names auto-rickshaws and riders correctly.</p></figcaption>
       </figure>
       <figure class="g-item">
         <button type="button" data-full="img/drive-following.jpg" aria-label="Enlarge: relaxed following"><img src="img/drive-following.jpg" width="960" height="452" loading="lazy" alt="Following at 20 metres plus or minus 2, TTC 6.4 seconds, headway 2.6 seconds, no warning"></button>
@@ -526,7 +526,7 @@ dialog.lb img{display:block;width:100%;height:auto}
       <li><div class="box"><span class="k">06</span><b>Alerts / HUD</b><small>Visual, audio &amp; voice; dashcam clip; trip log</small></div></li>
     </ol>
     <div class="eng">
-      <div><b>Models</b>YOLOv8n INT8 (COCO), TwinLiteNet drivable area, GTSRB MobileNetV3 INT8. All LiteRT / TFLite, all on-device.</div>
+      <div><b>Models</b>YOLOv8n INT8 trained on Indian roads (benchmark score 15.0 vs 9.0 for stock COCO), TwinLiteNet drivable area, GTSRB MobileNetV3 INT8. All LiteRT / TFLite, all on-device.</div>
       <div><b>Real-time discipline</b>Zero per-frame allocation and a single inference thread with drop-on-busy, so latency never piles up.</div>
       <div><b>Delegate fallback</b>Measured at runtime: NNAPI → GPU → XNNPACK. The fastest path that actually works on your device wins.</div>
     </div>
@@ -617,10 +617,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk">Copy</button>
       <li><span class="st done">Done</span><span><b>IMU mount estimation</b> and traffic-based auto-calibration</span></li>
       <li><span class="st done">Done</span><span><b>Accuracy tooling:</b> parked range check, drive CSV, radar comparison script</span></li>
       <li><span class="st done">Done</span><span><b>Road-test fixes:</b> low-fps tracking, duplicate boxes, stale-range guard</span></li>
-      <li><span class="st next">Next</span><span><b>Indian-roads detector:</b> auto-rickshaws, riders and animals, trained on openly licensed dashcam data</span></li>
-      <li><span class="st next">Next</span><span><b>Brake-light detection</b> as an early cue that the car ahead is slowing</span></li>
-      <li><span class="st later">Later</span><span><b>Public real-world accuracy dataset</b>, radar-referenced</span></li>
-      <li><span class="st later">Later</span><span><b>CI</b> running the simulation suite on every pull request</span></li>
+      <li><span class="st done">Done</span><span><b>Indian-roads detector:</b> auto-rickshaws, riders and animals, trained on openly licensed dashcam data</span></li>
+      <li><span class="st done">Done</span><span><b>Brake-light detection</b> as an early cue that the car ahead is slowing</span></li>
+      <li><span class="st done">Done</span><span><b>CI</b> running the simulation suite on every pull request</span></li>
+      <li><span class="st next">Next</span><span><b>Public real-world accuracy dataset</b>, radar-referenced</span></li>
     </ul>
   </div>
 </section>

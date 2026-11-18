@@ -50,8 +50,8 @@ running at 4–6 fps even while the phone was thermally throttled.
 
 The same drive exposed a bug: a false "car" detection on the dashboard held the lead at 1 m for the first
 three minutes. It's fixed (range expires after 0.8 s without a measurement and dashboard boxes are ignored,
-with regression tests). The general-purpose detector also sometimes labels auto-rickshaws as buses and
-riders as pedestrians, which is what the Indian-roads model on the roadmap is for. Real drives find what
+with regression tests). The general-purpose detector also labelled auto-rickshaws as buses and riders as
+pedestrians; v2.1 replaces it with a detector trained on Indian roads (see [Models](#models)). Real drives find what
 simulations miss, so please share yours.
 
 ## v2: accuracy first
@@ -189,23 +189,37 @@ minSdk 26 · target 35 · Kotlin 2.1 · Jetpack Compose · CameraX 1.4 · LiteRT
 
 | Model | Job | Format |
 |---|---|---|
-| YOLOv8n (COCO) | Vehicles, people, two-wheelers, stop signs | INT8 TFLite |
+| YOLOv8n, Indian roads | Cars, trucks, buses, auto-rickshaws, motorcycles, riders, bicycles, pedestrians, animals | INT8 TFLite |
 | TwinLiteNet | Drivable-area segmentation | TFLite |
 | GTSRB MobileNetV3 | Speed-limit classification | INT8 TFLite |
 | Classical CV | Model-free drivable area for entry devices | Kotlin |
 
-Conversion scripts and an India Driving Dataset fine-tuning recipe are in [models/](models/README.md).
+The detector is YOLOv8n fine-tuned on the [ThirdEye Indian road dataset](https://huggingface.co/datasets/thirdeyelabs/indian-road-dataset)
+(CC BY 4.0). Its machine-made labels were cleaned with a larger detector, and human-labelled COCO
+images were added for animals and buses. On the held-out
+[Indian Road Detection Benchmark](https://huggingface.co/datasets/thirdeyelabs/indian-road-benchmark)
+(official scorer, 450 frames, the app's 320 px INT8 model):
+
+| | COCO YOLOv8n (v2.0) | Lyne Indian-roads (v2.1) |
+|---|---|---|
+| Score (mAP 0.50–0.95) | 9.0 | **15.0** |
+| Night | 9.4 | **14.1** |
+| Auto-rickshaws found | 30% | **43%** |
+
+Distant street animals remain hard for both models, and stop signs are no longer detected (rare on
+Indian roads, and not in the training data). Training, cleaning and export scripts are in
+[models/train/](models/train/).
 
 ## Roadmap
 
 - [x] Multi-cue range, inverse-depth Kalman tracking, significance-tested TTC
 - [x] IMU mount estimation and traffic-based auto-calibration
 - [x] Event dashcam, trip history, accuracy CSV, voice alerts
-- [ ] Brake-light detection as an early lead-deceleration cue
+- [x] Brake-light detection as an early lead-deceleration cue
 - [x] Road-tested in Bengaluru traffic; fixes for low-fps tracking, duplicate boxes and stale range
-- [ ] Indian-roads detector (auto-rickshaws, riders, animals) trained on openly licensed dashcam data
+- [x] Indian-roads detector (auto-rickshaws, riders, animals) trained on openly licensed dashcam data
 - [ ] Public real-world accuracy dataset (radar-referenced)
-- [ ] CI with the simulation suite on every PR
+- [x] CI with the simulation suite on every PR
 
 ## Safety and limitations
 

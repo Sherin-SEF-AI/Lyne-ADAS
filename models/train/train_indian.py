@@ -625,8 +625,9 @@ def _predict(weights: str, images: List[Path], imgsz: int, device: str, conf: fl
     from ultralytics import YOLO
     model = YOLO(weights)
     out = {}
-    for i in range(0, len(images), 16):
-        chunk = [str(p) for p in images[i:i + 16]]
+    step = 1 if str(weights).endswith(".tflite") else 16  # exported TFLite models take batch 1
+    for i in range(0, len(images), step):
+        chunk = [str(p) for p in images[i:i + step]]
         for p, r in zip(chunk, model.predict(chunk, imgsz=imgsz, conf=conf, max_det=max_det, device=device, verbose=False)):
             names = r.names
             b = r.boxes
