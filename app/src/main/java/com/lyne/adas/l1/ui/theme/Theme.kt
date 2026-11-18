@@ -47,8 +47,8 @@ val NightPalette = LynePalette(
     caution = Color(0xFFFFB020),
     critical = Color(0xFFFF3B3B),
     ok = Color(0xFF38D27A),
-    laneNear = Color(0xFF3CE07F),
-    laneFar = Color(0xFF1F8F52),
+    laneNear = Color(0xFF3FC8E0),
+    laneFar = Color(0xFF38D27A),
 )
 
 val DayPalette = LynePalette(
@@ -64,8 +64,8 @@ val DayPalette = LynePalette(
     caution = Color(0xFFFFC233),
     critical = Color(0xFFFF4D4D),
     ok = Color(0xFF49F08C),
-    laneNear = Color(0xFF55F58F),
-    laneFar = Color(0xFF2BAE63),
+    laneNear = Color(0xFF36D6F2),
+    laneFar = Color(0xFF49F08C),
 )
 
 val LocalLynePalette = staticCompositionLocalOf { NightPalette }
@@ -86,13 +86,15 @@ object LyneColors {
     val EgoPath = Color(0x333FC8E0)
 }
 
-private val Mono = FontFamily.Monospace
+// Clean sans-serif with tabular (fixed-width) digits, so changing numbers don't jiggle.
+private val Sans = FontFamily.SansSerif
+private const val TNUM = "tnum"
 private val LyneTypography = Typography(
-    bodyLarge = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Normal, fontSize = 16.sp),
-    bodyMedium = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Normal, fontSize = 13.sp),
-    labelSmall = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 11.sp),
-    headlineMedium = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 34.sp),
-    titleLarge = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 22.sp),
+    bodyLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 16.sp, fontFeatureSettings = TNUM),
+    bodyMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 13.sp, fontFeatureSettings = TNUM),
+    labelSmall = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Medium, fontSize = 11.sp, fontFeatureSettings = TNUM, letterSpacing = 0.4.sp),
+    headlineMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 34.sp, fontFeatureSettings = TNUM),
+    titleLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 22.sp, fontFeatureSettings = TNUM),
 )
 
 @Composable

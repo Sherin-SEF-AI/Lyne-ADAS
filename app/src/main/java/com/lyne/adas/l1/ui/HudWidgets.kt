@@ -38,36 +38,57 @@ import com.lyne.adas.l1.fusion.Severity
 import com.lyne.adas.l1.perf.PerfSnapshot
 import com.lyne.adas.l1.pipeline.AdasUiState
 
-/** Compact system status: live/tier dot, backend, and calibration health in plain words. */
+/**
+ * System status. Normally a calm one-liner (live dot, plus NIGHT / HOT / VIDEO TEST only when they
+ * apply, and calibration progress only until it's done). With the performance panel on (developer
+ * view) it shows tier, backend, mount and camera-height details.
+ */
 @Composable
 fun StatusStrip(state: AdasUiState) {
     val p = palette()
     val live = !state.usingStub
     val auto = state.fusion?.autoCalConfidence ?: 0f
     val mountOk = state.mountPitchDeg != null && state.mountConvergence > 0.3f
-    Column(Modifier.background(p.chip, RoundedCornerShape(10.dp)).padding(10.dp, 6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    val deg = state.perf?.degradeLevel ?: 0
+    Column(
+        Modifier.background(p.chip, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             Box(Modifier.size(8.dp).background(if (live) p.ok else p.caution, CircleShape))
-            Text(if (live) "LIVE" else "DEMO", color = p.text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            if (state.videoTest) Text("VIDEO TEST", color = p.caution, fontSize = 11.sp, fontWeight = FontWeight.Black)
-            Text("· TIER ${state.tier.name} · ${state.perf?.backend?.name ?: "--"}", color = p.textDim, fontSize = 11.sp)
+            Text(if (live) "LIVE" else "DEMO", color = p.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+            if (state.videoTest) StatusTag("VIDEO TEST", p.caution)
             // Dark scene detected from the camera image: warnings run in their conservative night mode.
-            if (state.fusion?.lowLight == true) Text("NIGHT", color = p.accent, fontSize = 11.sp, fontWeight = FontWeight.Black)
-            val deg = state.perf?.degradeLevel ?: 0
-            if (deg > 0) Text("HOT L$deg", color = p.caution, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            if (state.fusion?.lowLight == true) StatusTag("NIGHT", p.accent)
+            if (state.showPerf) {
+                Text("TIER ${state.tier.name} · ${state.perf?.backend?.name ?: "--"}", color = p.textDim, fontSize = 11.sp)
+                if (deg > 0) StatusTag("HOT L$deg", p.caution)
+            } else if (deg >= 2) StatusTag("HOT", p.caution)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.showPerf) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (mountOk) "MOUNT ✓" else "MOUNT…", color = if (mountOk) p.ok else p.caution, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    if (auto >= 1f) "AUTO-CAL ✓" else "AUTO-CAL ${(auto * 100).toInt()}%",
+                    color = if (auto >= 1f) p.ok else p.textDim, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                )
+                Text("H ${"%.2f".format(state.cameraHeightM * (state.fusion?.heightScale ?: 1f))}m", color = p.textDim, fontSize = 10.sp)
+            }
+        } else if (!mountOk || auto < 1f) {
             Text(
-                if (mountOk) "MOUNT ✓" else "MOUNT…",
-                color = if (mountOk) p.ok else p.caution, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                if (!mountOk) "Reading phone mount…" else "Learning from traffic · ${(auto * 100).toInt()}%",
+                color = p.textDim, fontSize = 10.sp,
             )
-            Text(
-                if (auto >= 1f) "AUTO-CAL ✓" else "AUTO-CAL ${(auto * 100).toInt()}%",
-                color = if (auto >= 1f) p.ok else p.textDim, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-            )
-            Text("H ${"%.2f".format(state.cameraHeightM * (state.fusion?.heightScale ?: 1f))}m", color = p.textDim, fontSize = 10.sp)
         }
     }
+}
+
+@Composable
+private fun StatusTag(text: String, color: Color) {
+    Text(
+        text, color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp,
+        modifier = Modifier.background(color.copy(alpha = 0.16f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+    )
 }
 
 /** Lead vehicle readout: distance with honest uncertainty and relative (closing) speed. */

@@ -1,7 +1,11 @@
 package com.lyne.adas.l1.ui
 
 import android.view.View
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -49,7 +53,7 @@ fun HudScreen(
     val top = state.fusion?.topSeverity ?: Severity.NONE
     val transition = rememberInfiniteTransition(label = "hud")
     val phase by transition.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(1400), RepeatMode.Restart), label = "phase",
+        0f, 1f, infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart), label = "phase",
     )
     val pulse by transition.animateFloat(
         0.15f, 0.85f, infiniteRepeatable(tween(520), RepeatMode.Reverse), label = "pulse",
@@ -59,7 +63,7 @@ fun HudScreen(
     Box(Modifier.fillMaxSize().background(p.background)) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 
-        HudOverlay(result = state.fusion, frameAspect = state.frameAspect, palette = p, phase = phase, modifier = Modifier.fillMaxSize())
+        HudOverlay(result = state.fusion, frameAspect = state.frameAspect, palette = p, phase = phase, modifier = Modifier.fillMaxSize(), showHorizon = state.showPerf)
 
         // Soft vignette so the HUD stays readable on bright scenes without hiding the road.
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.35f), 0.22f to Color.Transparent, 0.8f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.35f))))
@@ -73,12 +77,17 @@ fun HudScreen(
         if (state.showPerf) Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) { state.perf?.let { PerfPanel(it) } }
 
         // Gauges: TTC + headway on the left, speed on the right.
-        Column(
-            Modifier.align(Alignment.CenterStart).padding(start = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+        // Only while there is a vehicle ahead: empty "--" rings are just clutter.
+        val hasLead = state.fusion?.leadDistanceM != null
+        AnimatedVisibility(
+            visible = hasLead || (state.fusion?.fcw ?: Severity.NONE) != Severity.NONE,
+            enter = fadeIn(tween(250)), exit = fadeOut(tween(600)),
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 6.dp),
         ) {
-            TtcRing(state.fusion?.ttcSec, state.fusion?.fcw ?: Severity.NONE)
-            HeadwayRing(state.fusion?.headwaySec, state.fusion?.headway ?: Severity.NONE)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                TtcRing(state.fusion?.ttcSec, state.fusion?.fcw ?: Severity.NONE)
+                HeadwayRing(state.fusion?.headwaySec, state.fusion?.headway ?: Severity.NONE)
+            }
         }
         Box(Modifier.align(Alignment.CenterEnd).padding(end = 6.dp)) {
             SpeedGauge(
