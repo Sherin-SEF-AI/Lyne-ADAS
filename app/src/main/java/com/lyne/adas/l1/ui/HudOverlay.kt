@@ -30,7 +30,8 @@ import kotlin.math.abs
 
 /**
  * Automotive HUD overlay drawn over the camera preview:
- *  - the drivable corridor ahead as one smooth, solid green shape, cut off at the vehicle ahead;
+ *  - the drivable road ahead (segmentation, cleaned up) as one smooth green shape fading with
+ *    distance, cut off at the vehicle ahead;
  *  - detections as rounded brackets that glide between model updates and fade in/out; the lead
  *    vehicle gets a lit ground "footprint" (where range is measured from) and a distance tag;
  *  - painted lane lines and the lane-departure steer arrow.
@@ -82,10 +83,10 @@ private fun buildCorridor(r: FusionResult): Corridor? {
     val lane = r.lane
     if (lane.confidence < MIN_LANE_CONF) return null
     // The IMU horizon bounds how far the road can reach; when it's implausible (odd mount, phone
-    // being handled) fall back to letting the segmentation decide where the road ends.
-    val h = if (!r.horizonLeftY.isNaN() && !r.horizonRightY.isNaN()) (r.horizonLeftY + r.horizonRightY) / 2f else Float.NaN
-    var top = if (h.isNaN() || h !in 0.15f..0.8f) 0.2f else h + 0.015f
-    // Stop the path at the vehicle ahead: the road beyond it isn't "yours" yet.
+    // being handled) let the segmentation decide where the road ends.
+    val hz = if (!r.horizonLeftY.isNaN() && !r.horizonRightY.isNaN()) (r.horizonLeftY + r.horizonRightY) / 2f else Float.NaN
+    var top = if (hz.isNaN() || hz !in 0.15f..0.8f) 0.2f else hz + 0.015f
+    // Stop at the vehicle ahead: the road beyond it isn't "yours" yet.
     val lead = r.objects.firstOrNull { it.isLead }
     if (lead != null) top = maxOf(top, lead.box.bottom - 0.005f)
     val mask = lane.mask
@@ -112,13 +113,22 @@ private fun DrawScope.drawCorridor(c: Corridor, r: FusionResult, map: Mapper, p:
     body.lineTo(rx[n - 1], ys[n - 1])
     smoothThrough(body, rx, ys, (n - 1) downTo 0)
     body.close()
-    // Solid, flat fill (segmentation-figure style): one clear colour for "drivable ahead".
-    drawPath(body, (warn ?: ROAD_GREEN).copy(alpha = ROAD_ALPHA * vis))
+    // The original Lyne look: green, brighter near the car and fading toward the distance.
+    val near = warn ?: p.laneNear
+    val far = warn ?: p.laneFar
+    drawPath(
+        body,
+        Brush.verticalGradient(
+            0f to far.copy(alpha = 0.07f * vis),
+            1f to near.copy(alpha = 0.40f * vis),
+            startY = topY, endY = bottomY,
+        ),
+    )
+    // Soft edge so the road boundary reads clearly without a hard outline.
+    val edge = Brush.verticalGradient(0f to far.copy(alpha = 0.15f * vis), 1f to near.copy(alpha = 0.75f * vis), startY = topY, endY = bottomY)
+    drawPath(body, edge, style = Stroke(1.6f * density, join = StrokeJoin.Round))
 }
 
-/** Bright segmentation green for the drivable corridor; amber/red replace it on lane departure. */
-private val ROAD_GREEN = Color(0xFF1EF23C)
-private const val ROAD_ALPHA = 0.72f
 
 /** Quadratic smoothing through points (midpoint method): no kinks from the row sampling. */
 private fun smoothThrough(path: Path, xs: FloatArray, ys: FloatArray, idx: IntProgression) {

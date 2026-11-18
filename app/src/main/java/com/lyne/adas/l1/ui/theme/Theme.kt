@@ -47,8 +47,8 @@ val NightPalette = LynePalette(
     caution = Color(0xFFFFB020),
     critical = Color(0xFFFF3B3B),
     ok = Color(0xFF38D27A),
-    laneNear = Color(0xFF3FC8E0),
-    laneFar = Color(0xFF38D27A),
+    laneNear = Color(0xFF3CE07F),
+    laneFar = Color(0xFF1F8F52),
 )
 
 val DayPalette = LynePalette(
@@ -64,8 +64,8 @@ val DayPalette = LynePalette(
     caution = Color(0xFFFFC233),
     critical = Color(0xFFFF4D4D),
     ok = Color(0xFF49F08C),
-    laneNear = Color(0xFF36D6F2),
-    laneFar = Color(0xFF49F08C),
+    laneNear = Color(0xFF55F58F),
+    laneFar = Color(0xFF2BAE63),
 )
 
 val LocalLynePalette = staticCompositionLocalOf { NightPalette }

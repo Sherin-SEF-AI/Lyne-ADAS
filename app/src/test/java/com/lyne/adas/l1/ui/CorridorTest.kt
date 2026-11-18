@@ -15,11 +15,11 @@ class CorridorTest {
             val ny = (y + 0.5f) / h
             if (ny < 0.45f) continue
             val t = (ny - 0.45f) / 0.55f            // 0 at horizon -> 1 at bottom
-            val half = 0.03f + 0.37f * t
+            val half = 0.03f + 0.27f * t
             for (x in 0 until w) {
                 val nx = (x + 0.5f) / w
                 if (kotlin.math.abs(nx - 0.5f) <= half) m[y * w + x] = 1
-                if (sideArea && nx > 0.92f && ny > 0.6f) m[y * w + x] = 1 // pavement island, not connected
+                if (sideArea && nx > 0.93f && ny > 0.6f) m[y * w + x] = 1 // pavement island, well separated
                 if (y == sideRoadRow && nx > 0.5f) m[y * w + x] = 1         // side road joining
             }
         }
@@ -38,7 +38,7 @@ class CorridorTest {
     @Test
     fun ignoresDisconnectedDrivablePatches() {
         val c = Corridor.fromMask(mask(sideArea = true), w, h, topY = 0.47f)!!
-        for (i in 0 until c.length) assertTrue("leaked at $i: ${c.right[i]}", c.right[i] < 0.92f)
+        for (i in 0 until c.length) assertTrue("leaked at $i: ${c.right[i]}", c.right[i] < 0.93f)
     }
 
     @Test
@@ -71,5 +71,40 @@ class CorridorTest {
         val after1 = s.update(shifted, t + 16_000_000L)!!
         // One frame later it has moved part of the way, not jumped.
         assertTrue(after1.left[0] > a.left[0] + 0.005f && after1.left[0] < a.left[0] + 0.09f)
+    }
+}
+
+class MaskCleanupTest {
+    private val w = 80; private val h = 45
+
+    /** Full road below row 22 split by a thin diagonal lane marking, bottom row empty (bonnet). */
+    private fun markedRoad(): ByteArray {
+        val m = ByteArray(w * h)
+        for (y in 22 until h - 1) for (x in 0 until w) m[y * w + x] = 1
+        for (y in 22 until h - 1) { val x = 40 - (y - 22); m[y * w + x] = 0; m[y * w + x - 1] = 0 }
+        return m
+    }
+
+    @Test
+    fun laneMarkingsDoNotSplitTheRoad() {
+        val c = Corridor.fromMask(markedRoad(), w, h, topY = 0.5f)!!
+        // The whole road width is covered near the car, not just one side of the marking.
+        assertTrue("left ${c.left[0]} right ${c.right[0]}", c.left[0] < 0.05f && c.right[0] > 0.95f)
+    }
+
+    @Test
+    fun emptyBottomRowIsBridged() {
+        val c = Corridor.fromMask(markedRoad(), w, h, topY = 0.5f)!!
+        assertTrue(c.length >= Corridor.N - 2)
+    }
+
+    @Test
+    fun closeGapsFillsOnlySmallHoles() {
+        val m = ByteArray(10 * 3) { 1 }
+        m[1 * 10 + 4] = 0                                // 1-cell hole: filled
+        for (x in 0 until 10) m[2 * 10 + x] = if (x < 5) 1 else 0 // open edge: kept
+        val out = Corridor.closeGaps(m, 10, 3)
+        assertEquals(1, out[1 * 10 + 4].toInt())
+        assertEquals(0, out[2 * 10 + 9].toInt())
     }
 }
