@@ -24,6 +24,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.size
@@ -60,11 +70,17 @@ fun HudScreen(
         0.15f, 0.85f, infiniteRepeatable(tween(520), RepeatMode.Reverse), label = "pulse",
     )
     val bannerColor by animateColorAsState(p.severityColor(top), label = "banner")
+    var lastTouch by remember { mutableLongStateOf(System.nanoTime()) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(lastTouch) { controlsVisible = true; delay(CONTROLS_HIDE_MS); controlsVisible = false }
 
     Box(Modifier.fillMaxSize().background(p.background)) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 
         HudOverlay(result = state.fusion, frameAspect = state.frameAspect, palette = p, phase = phase, modifier = Modifier.fillMaxSize(), showHorizon = state.showPerf)
+
+        // Tapping the road brings the controls back (they fade out so the view stays clear).
+        Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { lastTouch = System.nanoTime() } })
 
         // Soft vignette so the HUD stays readable on bright scenes without hiding the road.
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.35f), 0.22f to Color.Transparent, 0.8f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.35f))))
@@ -121,16 +137,22 @@ fun HudScreen(
         // Phone battery / heat guidance, out of the driver's main sight line.
         DeviceHintChips(state.deviceHints, Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 14.dp), onFixLocation)
 
-        // Bottom action bar.
-        ControlBar(
-            state = state,
+        // Bottom action bar: fades out after a few seconds so it doesn't sit over the road.
+        AnimatedVisibility(
+            visible = controlsVisible || !state.cameraReady,
+            enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 2 },
+            exit = fadeOut(tween(400)) + slideOutVertically(tween(400)) { it / 2 },
             modifier = Modifier.align(Alignment.BottomCenter),
-            onToggleMute = onToggleMute,
-            onOpenCalibration = onOpenCalibration,
-            onOpenSettings = onOpenSettings,
-            onOpenSession = onOpenSession,
-            onCycleDayNight = onCycleDayNight,
-        )
+        ) {
+            ControlBar(
+                state = state,
+                onToggleMute = { lastTouch = System.nanoTime(); onToggleMute() },
+                onOpenCalibration = onOpenCalibration,
+                onOpenSettings = onOpenSettings,
+                onOpenSession = onOpenSession,
+                onCycleDayNight = { lastTouch = System.nanoTime(); onCycleDayNight() },
+            )
+        }
 
         if (!state.cameraReady) {
             Box(Modifier.fillMaxSize().background(p.background), contentAlignment = Alignment.Center) {
@@ -140,9 +162,15 @@ fun HudScreen(
                         contentDescription = "Lyne ADAS", tint = p.text,
                         modifier = Modifier.size(width = 200.dp, height = 60.dp),
                     )
-                    Text(state.error ?: "Starting camera and models…", color = p.textDim, fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
+                    if (state.error == null) androidx.compose.material3.CircularProgressIndicator(
+                        color = p.accent, trackColor = p.surfaceAlt, strokeWidth = 3.dp,
+                        modifier = Modifier.padding(top = 24.dp).size(28.dp),
+                    )
+                    Text(state.error ?: "Starting camera…", color = p.textDim, fontSize = 14.sp, modifier = Modifier.padding(top = 14.dp))
                 }
             }
         }
     }
 }
+
+private const val CONTROLS_HIDE_MS = 6000L

@@ -1,53 +1,43 @@
 package com.lyne.adas.l1.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Lists saved dashcam clips with play and share actions. */
+/** Saved dashcam clips with play and share actions. */
 @Composable
 fun ClipsScreen(clips: List<File>, onPlay: (File) -> Unit, onShare: (File) -> Unit, onClose: () -> Unit) {
     val p = palette()
-    Column(Modifier.fillMaxSize().background(p.background).padding(16.dp)) {
-        ScreenHeader("DASHCAM CLIPS", onClose)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Saved automatically around critical events. Enable the dashcam in Settings.",
-            color = p.textDim, fontSize = 12.sp,
-        )
-        Spacer(Modifier.height(12.dp))
-
+    LyneScaffold("Dashcam clips", onClose, subtitle = if (clips.isEmpty()) null else "${clips.size} saved · kept around critical warnings") {
         if (clips.isEmpty()) {
-            Text("No clips yet.", color = p.textDim, fontSize = 13.sp)
+            EmptyState(
+                Icons.Filled.VideocamOff, "No clips yet",
+                "With the event dashcam on (Settings › Camera), Lyne saves a short clip around every critical warning.",
+            )
         } else {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                clips.forEach { f ->
-                    Column(Modifier.fillMaxWidth().background(p.surfaceAlt, RoundedCornerShape(8.dp)).padding(12.dp)) {
-                        Text(stamp(f), color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Text("%.1f MB".format(f.length() / 1e6), color = p.textDim, fontSize = 11.sp)
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PillButton("PLAY", p.accent) { onPlay(f) }
-                            PillButton("SHARE", p.text) { onShare(f) }
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 16.dp)) {
+                SurfaceCard {
+                    clips.forEachIndexed { i, f ->
+                        if (i > 0) RowDivider()
+                        ListRow(stamp(f), "%.1f MB".format(f.length() / 1e6), Icons.Filled.Videocam, onClick = { onPlay(f) }) {
+                            Row {
+                                IconButton(Icons.Filled.PlayArrow, "Play", p.accent, { onPlay(f) })
+                                IconButton(Icons.Filled.Share, "Share", p.text, { onShare(f) })
+                            }
                         }
                     }
                 }

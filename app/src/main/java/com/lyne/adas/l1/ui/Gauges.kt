@@ -59,8 +59,12 @@ fun SpeedGauge(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             val shown = speedKph?.let { if (estimated) "~${it.toInt()}" else it.toInt().toString() } ?: "--"
             Text(shown, color = if (estimated) p.textDim else p.text, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text(if (estimated && speedKph != null) "km/h est" else "km/h", color = p.textDim, fontSize = 10.sp)
-            Text(limitKph?.let { "LIM $it" } ?: "LIM --", color = if (overspeed != Severity.NONE) color else p.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(
+                when { speedKph == null -> "no GPS"; estimated -> "km/h est"; else -> "km/h" },
+                color = if (speedKph == null) p.caution else p.textDim, fontSize = 10.sp,
+            )
+            // Only when a speed-limit sign has been read: a permanent "LIM --" is just noise.
+            if (limitKph != null) Text("LIMIT $limitKph", color = if (overspeed != Severity.NONE) color else p.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -72,9 +76,9 @@ fun TtcRing(ttcSec: Float?, severity: Severity, modifier: Modifier = Modifier) {
     val color = if (severity != Severity.NONE) p.severityColor(severity) else p.ok
     ArcGauge(frac, color, p.surfaceAlt, modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("TTC", color = p.textDim, fontSize = 10.sp)
+            Text("IMPACT", color = p.textDim, fontSize = 9.sp, letterSpacing = 0.8.sp)
             Text(ttcSec?.let { fmt1(it) } ?: "--", color = color, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Text("sec", color = p.textDim, fontSize = 10.sp)
+            Text("seconds", color = p.textDim, fontSize = 9.sp)
         }
     }
 }
@@ -86,9 +90,9 @@ fun HeadwayRing(headwaySec: Float?, severity: Severity, modifier: Modifier = Mod
     val color = if (severity != Severity.NONE) p.severityColor(severity) else p.ok
     ArcGauge(frac, color, p.surfaceAlt, modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("HEADWAY", color = p.textDim, fontSize = 9.sp)
+            Text("GAP", color = p.textDim, fontSize = 9.sp, letterSpacing = 0.8.sp)
             Text(headwaySec?.let { fmt1(it) } ?: "--", color = color, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Text("sec", color = p.textDim, fontSize = 10.sp)
+            Text("seconds", color = p.textDim, fontSize = 9.sp)
         }
     }
 }

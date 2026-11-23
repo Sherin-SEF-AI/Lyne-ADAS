@@ -2,25 +2,42 @@ package com.lyne.adas.l1.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
@@ -31,43 +48,69 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Trip history: a list of past drives, each opening a route map, stats, and an event timeline. */
+/** Trip history: a list of past drives, each opening a route map, stats, and a warning timeline. */
 @Composable
 fun TripsScreen(trips: List<Trip>, onClose: () -> Unit) {
-    val p = palette()
     var selected by remember { mutableStateOf<Trip?>(null) }
-
-    Column(Modifier.fillMaxSize().background(p.background).padding(16.dp)) {
-        ScreenHeader(if (selected == null) "TRIP HISTORY" else "TRIP", onClose)
-        Spacer(Modifier.height(12.dp))
-
-        val sel = selected
-        if (sel == null) {
+    val sel = selected
+    if (sel == null) {
+        LyneScaffold("Trip history", onClose, subtitle = if (trips.isEmpty()) null else "${trips.size} drives") {
             if (trips.isEmpty()) {
-                Text("No drives recorded yet. Finish a drive and it lands here.", color = p.textDim, fontSize = 13.sp)
+                EmptyState(Icons.Filled.DirectionsCar, "No drives yet", "Each drive is saved here when you close Lyne: route, distance and the warnings you got.")
             } else {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    trips.forEach { t -> TripRow(t) { selected = t } }
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 16.dp)) {
+                    SurfaceCard {
+                        trips.forEachIndexed { i, t ->
+                            if (i > 0) RowDivider()
+                            ListRow(
+                                stamp(t.startedAtMs),
+                                "%.1f km  ·  %s  ·  %s".format(t.distanceKm, fmtDur(t.durationMs), warnings(t.totalAlerts)),
+                                Icons.Filled.Route,
+                                iconTint = if (t.totalAlerts > 0) palette().caution else palette().ok,
+                                onClick = { selected = t },
+                            ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = palette().textDim) }
+                        }
+                    }
                 }
             }
-        } else {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                PillButton("BACK", p.accent) { selected = null }
-                RouteMap(sel)
-                StatRow("Distance", "%.1f km".format(sel.distanceKm))
-                StatRow("Duration", fmtDur(sel.durationMs))
-                StatRow("Top speed", "${sel.maxSpeedKph.toInt()} km/h")
-                StatRow("Alerts", sel.totalAlerts.toString())
-                if (sel.alertCounts.isNotEmpty()) {
-                    SectionLabel("BY TYPE")
-                    sel.alertCounts.entries.sortedByDescending { it.value }.forEach { StatRow(it.key, it.value.toString()) }
-                }
-                SectionLabel("TIMELINE")
-                if (sel.events.isEmpty()) Text("No events.", color = p.textDim, fontSize = 12.sp)
-                else sel.events.takeLast(80).reversed().forEach { e ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(e.message, color = sevColor(e.severity), fontSize = 12.sp)
-                        Text(clock(e.tsMs), color = p.textDim, fontSize = 11.sp)
+        }
+    } else {
+        LyneScaffold(stamp(sel.startedAtMs), { selected = null }, subtitle = "Trip details") { TripDetail(sel) }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TripDetail(t: Trip) {
+    val p = palette()
+    Row(Modifier.fillMaxSize().padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            RouteMap(t)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                StatTile("Distance", "%.1f km".format(t.distanceKm), Modifier.weight(1f), Icons.Filled.Route)
+                StatTile("Duration", fmtDur(t.durationMs), Modifier.weight(1f), Icons.Filled.Schedule)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                StatTile("Top speed", if (t.maxSpeedKph > 0f) "${t.maxSpeedKph.toInt()} km/h" else "—", Modifier.weight(1f), Icons.Filled.Speed)
+                StatTile("Warnings", t.totalAlerts.toString(), Modifier.weight(1f), Icons.Filled.Warning)
+            }
+            if (t.alertCounts.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                t.alertCounts.entries.sortedByDescending { it.value }.forEach { StatusPill("${alertLabel(it.key)} · ${it.value}", p.textDim) }
+            }
+        }
+        SurfaceCard(Modifier.weight(1f), padding = false) {
+            Text("Timeline", color = p.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(16.dp))
+            if (t.events.isEmpty()) EmptyState(Icons.Filled.NotificationsNone, "No warnings", "A calm drive.")
+            else Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
+                t.events.takeLast(80).reversed().forEach { e ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(10.dp).background(sevColor(e.severity), CircleShape))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(alertLabel(e.type), color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(e.message.lowercase().replaceFirstChar { it.uppercase() }, color = p.textDim, fontSize = 12.sp)
+                        }
+                        Text(clock(e.tsMs), color = p.textDim, fontSize = 12.sp)
                     }
                 }
             }
@@ -76,55 +119,41 @@ fun TripsScreen(trips: List<Trip>, onClose: () -> Unit) {
 }
 
 @Composable
-private fun TripRow(t: Trip, onClick: () -> Unit) {
-    val p = palette()
-    Column(
-        Modifier.fillMaxWidth().background(p.surfaceAlt, RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(12.dp),
-    ) {
-        Text(stamp(t.startedAtMs), color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "%.1f km  ·  %s  ·  %d km/h  ·  %d alerts".format(t.distanceKm, fmtDur(t.durationMs), t.maxSpeedKph.toInt(), t.totalAlerts),
-            color = p.textDim, fontSize = 12.sp,
-        )
-    }
-}
-
-@Composable
 private fun RouteMap(t: Trip) {
     val p = palette()
-    if (t.lats.size < 2) {
-        Text("No GPS route for this trip.", color = p.textDim, fontSize = 12.sp)
+    val minLa = t.lats.minOrNull() ?: 0.0; val maxLa = t.lats.maxOrNull() ?: 0.0
+    val minLo = t.lons.minOrNull() ?: 0.0; val maxLo = t.lons.maxOrNull() ?: 0.0
+    // ~50 m: below that the "route" is GPS jitter around a parked car, not a drive worth drawing.
+    val tooSmall = maxOf(maxLa - minLa, maxLo - minLo) < 0.00045
+    if (t.lats.size < 2 || tooSmall) {
+        Box(Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(18.dp)).background(p.surface), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(if (t.lats.size < 2) Icons.Filled.LocationOff else Icons.Filled.Route, null, tint = p.textDim)
+                Text(
+                    if (t.lats.size < 2) "No route: location was off" else "Route too short to show",
+                    color = p.textDim, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        }
         return
     }
-    val minLa = t.lats.min(); val maxLa = t.lats.max()
-    val minLo = t.lons.min(); val maxLo = t.lons.max()
-    val rangeLa = (maxLa - minLa).coerceAtLeast(1e-6)
-    val rangeLo = (maxLo - minLo).coerceAtLeast(1e-6)
-    Canvas(Modifier.fillMaxWidth().height(200.dp).background(p.surface, RoundedCornerShape(8.dp)).padding(10.dp)) {
-        val pad = 8f
-        fun px(i: Int): Offset {
-            val x = pad + ((t.lons[i] - minLo) / rangeLo).toFloat() * (size.width - 2 * pad)
-            val y = pad + (1f - ((t.lats[i] - minLa) / rangeLa).toFloat()) * (size.height - 2 * pad)
-            return Offset(x, y)
-        }
+    val rangeLa = maxLa - minLa
+    val rangeLo = maxLo - minLo
+    Canvas(Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(18.dp)).background(p.surface).padding(14.dp)) {
+        // Keep the route's aspect ratio (a north-south drive shouldn't be stretched sideways).
+        val scale = minOf(size.width / rangeLo.toFloat(), size.height / rangeLa.toFloat())
+        val ox = (size.width - rangeLo.toFloat() * scale) / 2f
+        val oy = (size.height - rangeLa.toFloat() * scale) / 2f
+        fun px(i: Int) = Offset(ox + ((t.lons[i] - minLo).toFloat() * scale), oy + ((maxLa - t.lats[i]).toFloat() * scale))
         var prev = px(0)
         for (i in 1 until t.lats.size) {
             val cur = px(i)
             drawLine(p.accent, prev, cur, strokeWidth = 4f * density, cap = StrokeCap.Round)
             prev = cur
         }
-        drawCircle(p.ok, radius = 6f * density, center = px(0))
-        drawCircle(p.critical, radius = 6f * density, center = px(t.lats.size - 1))
-    }
-}
-
-@Composable
-private fun StatRow(label: String, value: String) {
-    val p = palette()
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = p.textDim, fontSize = 13.sp)
-        Text(value, color = p.text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        drawCircle(p.background, radius = 8f * density, center = px(0)); drawCircle(p.ok, radius = 6f * density, center = px(0))
+        val end = px(t.lats.size - 1)
+        drawCircle(p.background, radius = 8f * density, center = end); drawCircle(p.critical, radius = 6f * density, center = end)
     }
 }
 
@@ -135,6 +164,8 @@ private fun sevColor(sev: String) = when (sev) {
     "INFO" -> palette().info
     else -> palette().textDim
 }
+
+private fun warnings(n: Int) = when (n) { 0 -> "no warnings"; 1 -> "1 warning"; else -> "$n warnings" }
 
 private fun fmtDur(ms: Long): String {
     val s = ms / 1000; val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60

@@ -27,14 +27,14 @@ val releaseSigning: Map<String, String>? = run {
 
 android {
     namespace = "com.lyne.adas.l1"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.lyne.adas.l1"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 3
-        versionName = "2.1"
+        targetSdk = 36
+        versionCode = 4
+        versionName = "2.2"
 
         vectorDrawables { useSupportLibrary = true }
     }

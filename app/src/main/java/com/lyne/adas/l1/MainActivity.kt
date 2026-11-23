@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -90,6 +91,9 @@ class MainActivity : ComponentActivity() {
         val state by controller.state.collectAsStateWithLifecycle()
         LyneTheme(night = state.isNight) {
             var screen by remember { mutableStateOf(Screen.HUD) }
+            // Where back returns to for screens reachable from more than one place.
+            var clipsBack by remember { mutableStateOf(Screen.SESSION) }
+            var calibBack by remember { mutableStateOf(Screen.HUD) }
             var config by remember { mutableStateOf(controller.currentConfig()) }
 
             // First-run onboarding gates everything until completed.
@@ -99,6 +103,8 @@ class MainActivity : ComponentActivity() {
                     locationGranted = locationGranted.value,
                     locationOn = locationOn.value,
                     onTurnOnLocation = { promptLocationOn(force = true) },
+                    vehicle = state.vehiclePreset,
+                    onPickVehicle = { v -> controller.setCameraHeight(v.cameraHeightM, v) },
                     disclaimerAccepted = disclaimerOk.value,
                     onAcceptDisclaimer = { controller.acceptDisclaimer(); disclaimerOk.value = true },
                     onRequestPermissions = { requestPermissions() },
@@ -115,12 +121,19 @@ class MainActivity : ComponentActivity() {
                 return@LyneTheme
             }
 
-            when (screen) {
+            androidx.compose.animation.AnimatedContent(
+                screen,
+                transitionSpec = {
+                    androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)) togetherWith
+                        androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160))
+                },
+                label = "screen",
+            ) { current -> when (current) {
                 Screen.HUD -> HudScreen(
                     state = state,
                     previewView = previewView,
                     onToggleMute = { controller.toggleMute() },
-                    onOpenCalibration = { screen = Screen.CALIB },
+                    onOpenCalibration = { calibBack = Screen.HUD; screen = Screen.CALIB },
                     onOpenSettings = { screen = Screen.SETTINGS },
                     onOpenSession = { screen = Screen.SESSION },
                     onCycleDayNight = { controller.setDayNightMode(nextMode(state.dayNightMode)) },
@@ -136,6 +149,8 @@ class MainActivity : ComponentActivity() {
                     onTogglePerf = { controller.togglePerf() },
                     onShareAccuracyLog = { controller.shareAccuracyLog() },
                     onClose = { screen = Screen.HUD },
+                    onOpenCalibration = { calibBack = Screen.SETTINGS; screen = Screen.CALIB },
+                    onOpenClips = { clipsBack = Screen.SETTINGS; screen = Screen.CLIPS },
                     extraCards = {
                         CarReminderCard(
                             enabled = carReminder.value,
@@ -159,13 +174,13 @@ class MainActivity : ComponentActivity() {
                     onResetAutoCal = { controller.resetAutoCal() },
                     onStartRangeCheck = { controller.startRangeCheck(it) },
                     onShareAccuracy = { controller.shareAccuracyLog() },
-                    onClose = { screen = Screen.HUD },
+                    onClose = { screen = calibBack },
                 )
                 Screen.SESSION -> SessionScreen(
                     state = state,
                     onExport = { controller.shareRovix() },
                     onOpenTrips = { screen = Screen.TRIPS },
-                    onOpenClips = { screen = Screen.CLIPS },
+                    onOpenClips = { clipsBack = Screen.SESSION; screen = Screen.CLIPS },
                     onClose = { screen = Screen.HUD },
                 )
                 Screen.TRIPS -> TripsScreen(
@@ -176,9 +191,9 @@ class MainActivity : ComponentActivity() {
                     clips = remember(screen) { controller.listClips() },
                     onPlay = { controller.playClip(it) },
                     onShare = { controller.shareClip(it) },
-                    onClose = { screen = Screen.SESSION },
+                    onClose = { screen = clipsBack },
                 )
-            }
+            } }
         }
     }
 

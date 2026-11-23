@@ -103,7 +103,7 @@ fun LeadCard(f: FusionResult?) {
         Modifier.background(p.chip, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("LEAD", color = p.textDim, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text("AHEAD", color = p.textDim, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
         Spacer(Modifier.width(8.dp))
         Text("${d.toInt()}", color = color, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text(" m", color = p.textDim, fontSize = 12.sp)
