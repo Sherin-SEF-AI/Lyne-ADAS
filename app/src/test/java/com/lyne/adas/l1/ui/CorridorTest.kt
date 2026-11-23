@@ -89,6 +89,44 @@ class CorridorTest {
         // One frame later it has moved part of the way, not jumped.
         assertTrue(after1.left[0] > a.left[0] + 0.005f && after1.left[0] < a.left[0] + 0.09f)
     }
+    @Test
+    fun curvedDashboardDoesNotShrinkTheCorridorToOneLane() {
+        // A dashboard edge that rises to the right hides the near road unevenly: the lowest visible
+        // rows show only the left part of the road.
+        val m = mask()
+        for (y in 0 until h) for (x in 0 until w) {
+            val nx = (x + 0.5f) / w; val ny = (y + 0.5f) / h
+            if (ny > 0.92f - 0.25f * nx) m[y * w + x] = 0
+        }
+        val c = Corridor.fromMask(m, w, h, topY = 0.3f)!!
+        val full = Corridor.fromMask(mask(), w, h, topY = 0.3f)!!
+        fun widthAt(c: Corridor, y: Float): Float {
+            var best = 0; for (i in 0 until c.length) if (kotlin.math.abs(c.rows[i] - y) < kotlin.math.abs(c.rows[best] - y)) best = i
+            return c.right[best] - c.left[best]
+        }
+        assertTrue("narrowed: ${widthAt(c, 0.55f)} vs ${widthAt(full, 0.55f)}", widthAt(c, 0.55f) > 0.8f * widthAt(full, 0.55f))
+    }
+
+    @Test
+    fun startsWhereTheRoadStartsNotOverTheBonnet() {
+        // Bottom 25% hidden (bonnet / screen edge): the corridor must not be stretched down over it.
+        val m = mask()
+        for (y in (h * 0.75f).toInt() until h) for (x in 0 until w) m[y * w + x] = 0
+        val c = Corridor.fromMask(m, w, h, topY = 0.3f)!!
+        assertTrue("starts at ${c.rows[0]}", c.rows[0] < 0.8f)
+    }
+
+    @Test
+    fun thinSliverAtTheBottomDoesNotNarrowTheCorridor() {
+        // A thin run at the very bottom, then the full road above it.
+        val m = mask()
+        for (y in (h * 0.92f).toInt() until h) for (x in 0 until w) {
+            val nx = (x + 0.5f) / w; m[y * w + x] = if (nx in 0.48f..0.53f) 1 else 0
+        }
+        val c = Corridor.fromMask(m, w, h, topY = 0.3f)!!
+        val mid = c.length / 3
+        assertTrue("too narrow: ${c.right[mid] - c.left[mid]}", c.right[mid] - c.left[mid] > 0.3f)
+    }
 }
 
 class MaskCleanupTest {
@@ -124,4 +162,5 @@ class MaskCleanupTest {
         assertEquals(1, out[1 * 10 + 4].toInt())
         assertEquals(0, out[2 * 10 + 9].toInt())
     }
+
 }

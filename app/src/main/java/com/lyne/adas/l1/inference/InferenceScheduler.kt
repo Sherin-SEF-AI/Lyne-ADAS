@@ -132,14 +132,18 @@ class InferenceScheduler(
             // Dispatch the drivable-area segmenter asynchronously (own thread) if it isn't already
             // running. Copy into a private bitmap so the pooled frame can be recycled immediately.
             val laneCad = profile.laneCadence * plan.segEvery
-            if (laneCad > 0 && n % laneCad == 0L && laneBusy.compareAndSet(false, true)) {
+            if (!closed && laneCad > 0 && n % laneCad == 0L && laneBusy.compareAndSet(false, true)) {
                 val priv = copyForLane(frame.bitmap)
                 val laneFrame = CameraFrame(priv, frame.timestampNs, 0, frame.frameId)
-                laneWorker.execute {
-                    val s = System.nanoTime()
-                    try { lastLane = detectors.lane.detect(laneFrame) }
-                    catch (t: Throwable) { Log.e(TAG, "lane failed", t) }
-                    finally { perf.stage("lane", System.nanoTime() - s); laneBusy.set(false) }
+                try {
+                    laneWorker.execute {
+                        val s = System.nanoTime()
+                        try { lastLane = detectors.lane.detect(laneFrame) }
+                        catch (t: Throwable) { Log.e(TAG, "lane failed", t) }
+                        finally { perf.stage("lane", System.nanoTime() - s); laneBusy.set(false) }
+                    }
+                } catch (_: java.util.concurrent.RejectedExecutionException) {
+                    laneBusy.set(false) // shutting down (app went to background) mid-frame
                 }
             }
 

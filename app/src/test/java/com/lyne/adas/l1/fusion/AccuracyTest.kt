@@ -295,4 +295,24 @@ class AccuracyTest {
         val events = runSim(proj, listOf(ped), 2.6f, 8f, engine, step = { dt, _ -> ped.z -= 10f * dt; 10f })
         assertEquals(0, events.count { it.type == AlertType.VRU && it.severity == Severity.CRITICAL })
     }
+
+    /** Oncoming car on an undivided road (each at 8 m/s, so closing 16 m/s): with GPS speed, never FCW. */
+    @Test fun oncomingCarIsNotAForwardCollision() {
+        val proj = Projector(seed = 61)
+        val car = SimObject(z = 45f, x = 1.2f, width = 1.8f, height = 1.5f)
+        val events = runSim(proj, listOf(car), 2.6f, 8f, step = { dt, _ -> car.z -= 16f * dt; 8f })
+        assertEquals(0, events.count { it.type == AlertType.FCW })
+    }
+
+    /** Scooter riding alongside, just inside the corridor margin, with no GPS speed: caution at most. */
+    @Test fun riderAlongsideWithoutGpsIsNotCritical() {
+        val proj = Projector(seed = 67)
+        val rider = SimObject(z = 10f, x = 1.2f, width = 0.8f, height = 1.6f, cls = ObjectClass.MOTORCYCLE)
+        val engine = FusionEngine(AdasConfig.DEFAULT, VRU_ONLY, autoCalEnabled = false)
+        // We creep up on it at 2.5 m/s relative until it's 2.5 m off the bumper.
+        val events = runSim(proj, listOf(rider), 3f, 7f, engine, step = { dt, _ ->
+            rider.z = (rider.z - 2.5f * dt).coerceAtLeast(2.5f); Float.NaN
+        })
+        assertEquals(0, events.count { it.type == AlertType.VRU && it.severity == Severity.CRITICAL })
+    }
 }

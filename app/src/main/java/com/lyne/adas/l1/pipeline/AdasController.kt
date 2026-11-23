@@ -102,6 +102,7 @@ class AdasController(
     private val rangeCheck = com.lyne.adas.l1.logging.RangeCheck(context)
     private var lastUiPushMs = 0L
     private var lastDiagMs = 0L
+    private var startedMs = 0L
     private val diagEvents = StringBuilder()
     private val leadSampler = com.lyne.adas.l1.inference.BitmapLeadSampler()
 
@@ -112,6 +113,7 @@ class AdasController(
     @Volatile private var charging: Boolean? = null
 
     fun start(preview: PreviewView?) {
+        startedMs = System.currentTimeMillis()
         if (started) return
         started = true
         previewView = preview
@@ -222,7 +224,7 @@ class AdasController(
         alerts.onResult(result, nowMs, speed * 3.6f)
         accuracyLog?.record(nowMs, raw) // raw measurements, before any warning suppression
         for (e in result.events) diagEvents.append(e.type.name).append(':').append(e.severity.name.take(4)).append(' ')
-        if (nowMs - lastDiagMs >= 1000L) { lastDiagMs = nowMs; logDiag(result, speed); diagEvents.setLength(0) }
+        if (nowMs - lastDiagMs >= 1000L) { lastDiagMs = nowMs; logDiag(result, speed); diagEvents.setLength(0); pushDeviceHints() }
         val rcChanged = rangeCheck.onResult(result, nowMs)
         session?.tick(nowMs, location.speedMps, location.latitude, location.longitude, result.events)
         if (result.topSeverity == com.lyne.adas.l1.fusion.Severity.CRITICAL) recorder?.onEvent()
@@ -281,7 +283,10 @@ class AdasController(
     }
 
     private fun pushDeviceHints() {
-        val hints: List<DeviceHint> = DeviceGuidance.hints(batteryPct, charging, DeviceGuidance.thermalStatusFromLabel(perf.thermal))
+        val gps = if (config.videoTestMode) com.lyne.adas.l1.perf.GpsState.OK
+        else if (System.currentTimeMillis() - startedMs < GPS_GRACE_MS) com.lyne.adas.l1.perf.GpsState.OK // first fix takes a moment
+        else location.gpsState()
+        val hints: List<DeviceHint> = DeviceGuidance.hints(batteryPct, charging, DeviceGuidance.thermalStatusFromLabel(perf.thermal), gps)
         if (hints != _state.value.deviceHints) _state.value = _state.value.copy(deviceHints = hints)
     }
 
@@ -401,6 +406,9 @@ class AdasController(
         settings.saveConfig(config)
         _state.value = _state.value.copy(showPerf = config.showPerfOverlay)
     }
+
+    /** Location was granted while running (asked after start): begin GPS speed updates now. */
+    fun onLocationPermissionGranted() { if (started) location.start() }
 
     fun isOnboarded(): Boolean = settings.onboarded
     fun needsDisclaimer(): Boolean = com.lyne.adas.l1.config.SafetyDisclaimer.needsAcceptance(settings.disclaimerAcceptedVersion)
@@ -555,6 +563,8 @@ class AdasController(
     }
 
     companion object {
+        /** Don't nag about GPS during the first fix after start. */
+        private const val GPS_GRACE_MS = 20_000L
         private const val TAG = "AdasController"
         /** Typical windshield mount looks ~3 deg down until the IMU says otherwise. */
         private const val DEFAULT_PITCH_RAD = 0.05f

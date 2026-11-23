@@ -77,8 +77,8 @@ class FusionEngine(
             t.isLead = false
             val d = t.distanceM
             if (d.isNaN()) { t.inPath = false; t.lateralM = Float.NaN; continue }
-            t.lateralM = geom.lateralM(t.box.cx, d)
             val half = (if (t.learnedWidthM.isNaN()) RangeEstimator.widthPrior(t.cls) else t.learnedWidthM) / 2f
+            t.lateralM = edgeAwareLateral(t.box, d, half, geom)
             val center = PathIntrusion.pathCenterM(d, speedMps, yawRate)
             val ov = PathIntrusion.overlapM(t.lateralM, half, center, PathIntrusion.EGO_HALF_M)
             // Hysteresis: the current lead keeps its status until it clearly leaves the corridor.
@@ -145,7 +145,19 @@ class FusionEngine(
                 // Physical plausibility: the lead can't approach faster than we drive (+ margin for
                 // a reversing/braking car and GPS lag). Violations are measurement noise.
                 val plausible = !egoKnown || closing <= speedMps + 3f
-                if (plausible && egoMoving) {
+                // A vehicle on a collision course holds its bearing; one sweeping sideways out of the
+                // view (oncoming traffic on an undivided road, a car we're overtaking) will be beside
+                // us, not in front, when the gap closes. Needs no ego speed, so it also works without GPS.
+                val vLat = lateralVelocity(lead, d, if (egoKnown) speedMps else closing, yawRate, geom)
+                val centerNow = PathIntrusion.pathCenterM(d, speedMps, yawRate)
+                val latAtContact = lead.lateralM + vLat * ttc.ttc.coerceIn(0f, 3f)
+                val leadHalf = (if (lead.learnedWidthM.isNaN()) RangeEstimator.widthPrior(lead.cls) else lead.learnedWidthM) / 2f
+                // Only for a vehicle already off to one side and clearly moving outward: a lead
+                // centred in our lane is never treated as passing, whatever the box jitter says.
+                val offNow = lead.lateralM - centerNow
+                val passing = abs(offNow) > PASSING_MIN_OFFSET_M && vLat * offNow > 0f && abs(vLat) >= PASSING_MIN_VLAT &&
+                    PathIntrusion.overlapM(latAtContact, leadHalf, centerNow, PathIntrusion.EGO_HALF_M) <= 0f
+                if (plausible && egoMoving && !passing) {
                     ttcSec = ttc.ttc
                     val mature = lead.ageSec(nowNs) >= 0.5f && lead.hits >= 4 && lead.misses <= 1
                     if (features.fcw && mature && closing >= 1f) {
@@ -192,12 +204,7 @@ class FusionEngine(
                 // closes, and it's the second term that shows them heading for our path.) Not while
                 // turning: yaw sweeps everything sideways.
                 val vEgo = if (speedMps.isNaN()) 6f else speedMps
-                val vLat = if (t.hits >= 2 && abs(yawRate) < 0.15f) {
-                    val u = geom.lateralM(t.box.cx, 1f)
-                    val duD = geom.lateralM(t.box.cx + t.screenVx, d) - geom.lateralM(t.box.cx, d)
-                    val closingEst = if (t.kalman.updates >= 3 && !t.closingMps.isNaN()) t.closingMps else vEgo
-                    (duD - u * closingEst).coerceIn(-4f, 4f)
-                } else 0f
+                val vLat = lateralVelocity(t, d, vEgo, yawRate, geom)
                 val tReach = (d / vEgo.coerceAtLeast(1.5f)).coerceIn(0f, PathIntrusion.VRU_PREDICT_HORIZON_S)
                 val latPred = t.lateralM + vLat * tReach
                 val movingIn = abs(latPred - center) < abs(t.lateralM - center) - 0.2f
@@ -504,6 +511,33 @@ class FusionEngine(
         animalGate.reset(); lowLightEst.reset()
     }
 
+    /**
+     * Lateral offset (m) of a track's centre. A box cut off by the left/right image border shows only
+     * the inner part of the vehicle, so its box centre sits too close to our path (a car we're passing
+     * looks like it's in front of us); place the centre half a vehicle outward from the visible inner edge.
+     */
+    private fun edgeAwareLateral(b: BBox, d: Float, half: Float, geom: CameraGeometry): Float {
+        val c = geom.lateralM(b.cx, d)
+        return when {
+            b.left <= EDGE_TOUCH && b.right < 1f - EDGE_TOUCH -> minOf(c, geom.lateralM(b.right, d) - half)
+            b.right >= 1f - EDGE_TOUCH && b.left > EDGE_TOUCH -> maxOf(c, geom.lateralM(b.left, d) + half)
+            else -> c
+        }
+    }
+
+    /**
+     * Lateral velocity (m/s, + = rightward) from the box's screen motion. lateral = u * d, so
+     * d(lateral)/dt = d * du/dt - u * closing; the second term is what shows a constant-bearing
+     * target heading for our path. 0 while turning (yaw sweeps everything sideways) or too young.
+     */
+    private fun lateralVelocity(t: Track, d: Float, closingFallback: Float, yawRate: Float, geom: CameraGeometry): Float {
+        if (t.hits < 2 || abs(yawRate) >= 0.15f) return 0f
+        val u = geom.lateralM(t.box.cx, 1f)
+        val duD = geom.lateralM(t.box.cx + t.screenVx, d) - geom.lateralM(t.box.cx, d)
+        val closingEst = if (t.kalman.updates >= 3 && !t.closingMps.isNaN()) t.closingMps else closingFallback
+        return (duD - u * closingEst).coerceIn(-4f, 4f)
+    }
+
     companion object {
         /** Below ~10 km/h FCW is off (creeping traffic), like production systems. */
         const val MIN_FCW_SPEED_MPS = 2.8f
@@ -512,6 +546,11 @@ class FusionEngine(
         const val MIN_LDW_SPEED_MPS = 11f
         /** Within this range a VRU track counts after 2 hits instead of 3. */
         const val VRU_FAST_CONFIRM_M = 15f
+        /** A box edge this close to the image border is treated as cut off. */
+        private const val EDGE_TOUCH = 0.01f
+        /** Passing-vehicle test: lateral offset and outward speed needed before FCW is withheld. */
+        private const val PASSING_MIN_OFFSET_M = 0.8f
+        private const val PASSING_MIN_VLAT = 0.5f
         /** Looming significance needed for CAUTION while the lead shows brake lights (else 2). */
         const val BRAKING_MIN_Z = 1.5f
         /** Extra CAUTION TTC window while the lead shows brake lights. */

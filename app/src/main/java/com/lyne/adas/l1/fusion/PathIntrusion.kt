@@ -54,7 +54,9 @@ object PathIntrusion {
         val effClosing = maxOf(closingMps, v - 2.5f)
         val ttr = distanceM / effClosing
         return when {
-            inEgo && (ttr < 1.6f || distanceM < 4f) -> Severity.CRITICAL
+            // Without GPS speed we can't tell a rider pacing us from one we're about to hit (two-
+            // wheelers alongside are constant in Indian traffic): never critical, like animals.
+            inEgo && (ttr < 1.6f || distanceM < 4f) -> if (egoSpeedMps.isNaN()) Severity.CAUTION else Severity.CRITICAL
             (inEgo && ttr < 3.0f) || (ttr < 1.8f) -> Severity.CAUTION
             distanceM < 25f -> Severity.INFO
             else -> Severity.NONE

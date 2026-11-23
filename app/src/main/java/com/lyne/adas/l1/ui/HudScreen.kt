@@ -48,6 +48,7 @@ fun HudScreen(
     onOpenSettings: () -> Unit,
     onOpenSession: () -> Unit,
     onCycleDayNight: () -> Unit,
+    onFixLocation: () -> Unit = {},
 ) {
     val p = palette()
     val top = state.fusion?.topSeverity ?: Severity.NONE
@@ -118,7 +119,7 @@ fun HudScreen(
         }
 
         // Phone battery / heat guidance, out of the driver's main sight line.
-        DeviceHintChips(state.deviceHints, Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 14.dp))
+        DeviceHintChips(state.deviceHints, Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 14.dp), onFixLocation)
 
         // Bottom action bar.
         ControlBar(

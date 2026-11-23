@@ -1,6 +1,8 @@
 package com.lyne.adas.l1.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,17 +50,23 @@ fun CameraHealthBanner(health: CameraHealth, modifier: Modifier = Modifier) {
 
 /** Small, non-intrusive phone-condition chips (battery / heat). */
 @Composable
-fun DeviceHintChips(hints: List<DeviceHint>, modifier: Modifier = Modifier) {
+fun DeviceHintChips(hints: List<DeviceHint>, modifier: Modifier = Modifier, onFixLocation: () -> Unit = {}) {
     if (hints.isEmpty()) return
     val p = palette()
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         hints.forEach { h ->
             Row(
-                Modifier.widthIn(max = 200.dp).background(p.chip, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+                Modifier.widthIn(max = 200.dp).background(p.chip, RoundedCornerShape(10.dp))
+                    .then(if (h == DeviceHint.LOCATION_OFF || h == DeviceHint.NO_GPS) Modifier.clickable(onClick = onFixLocation) else Modifier)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    if (h == DeviceHint.PHONE_HOT) Icons.Filled.DeviceThermostat else Icons.Filled.BatteryAlert,
+                    when (h) {
+                        DeviceHint.PHONE_HOT -> Icons.Filled.DeviceThermostat
+                        DeviceHint.LOCATION_OFF, DeviceHint.NO_GPS -> Icons.Filled.LocationOff
+                        else -> Icons.Filled.BatteryAlert
+                    },
                     contentDescription = null, tint = p.caution, modifier = Modifier.size(16.dp),
                 )
                 Text(h.text, color = p.text, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp))

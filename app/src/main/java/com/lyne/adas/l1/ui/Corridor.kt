@@ -23,11 +23,17 @@ class Corridor(val rows: FloatArray, val left: FloatArray, val right: FloatArray
         private const val BOTTOM = 0.99f
         /** Max outward drift of a road edge per unit of image height going up (gentle curves only). */
         private const val MAX_OUTWARD_SLOPE = 0.2f
+        /** The first (nearest) accepted row must span at least this share of the image width. */
+        private const val MIN_FIRST_WIDTH = 0.12f
+        /** Near rows allowed to widen freely before the no-widening clamp applies. */
+        private const val FREE_ROWS = 3
+        /** A start row must show at least this share of the widest near-road row. */
+        private const val FULL_WIDTH_SHARE = 0.8f
 
-        private fun sampleRows(topY: Float): FloatArray {
-            val top = topY.coerceIn(0f, BOTTOM - 0.05f)
+        private fun sampleRows(topY: Float, bottom: Float = BOTTOM): FloatArray {
+            val top = topY.coerceIn(0f, bottom - 0.05f)
             // Denser near the horizon, where the road narrows fastest.
-            return FloatArray(N) { i -> val t = i / (N - 1f); BOTTOM - (BOTTOM - top) * (1f - (1f - t) * (1f - t)) }
+            return FloatArray(N) { i -> val t = i / (N - 1f); bottom - (bottom - top) * (1f - (1f - t) * (1f - t)) }
         }
 
         /**
@@ -41,11 +47,21 @@ class Corridor(val rows: FloatArray, val left: FloatArray, val right: FloatArray
          */
         fun fromMask(mask: ByteArray, w: Int, h: Int, topY: Float, egoX: Float = 0.5f): Corridor? {
             if (w <= 1 || h <= 1 || mask.size < w * h) return null
-            val m = closeGaps(mask, w, h)
-            val rows = sampleRows(topY)
+            return scan(closeGaps(mask, w, h), w, h, topY, egoX, BOTTOM, 0)
+        }
+
+        private fun scan(m: ByteArray, w: Int, h: Int, topY: Float, egoX: Float, bottom: Float, depth: Int): Corridor? {
+            val rows = sampleRows(topY, bottom)
+            if (depth == 0) {
+                // A dashboard or bonnet with a curved edge hides the near road unevenly, so the lowest
+                // visible rows show only a sliver (often one lane). Start at the first row that shows
+                // (nearly) the full road width instead; the no-widening rules then hold from there.
+                val start = fullWidthStart(m, w, h, rows, egoX)
+                if (start > 0 && rows[start] > topY + 0.1f) return scan(m, w, h, topY, egoX, rows[start], 1)
+            }
             val left = FloatArray(N) { Float.NaN }; val right = FloatArray(N) { Float.NaN }
             var ref = (egoX * w).toInt().coerceIn(0, w - 1)
-            var prevWidth = -1
+            var maxWidth = -1; var goodRows = 0
             var lastGood = -1; var gap = 0
             for (i in 0 until N) {
                 val my = (rows[i] * h).toInt().coerceIn(0, h - 1)
@@ -64,11 +80,27 @@ class Corridor(val rows: FloatArray, val left: FloatArray, val right: FloatArray
                 }
                 var a = seed; while (a > 0 && on(a - 1)) a--
                 var b = seed; while (b < w - 1 && on(b + 1)) b++
-                if (b - a + 1 < maxOf(2, w / 100)) { if (lastGood >= 0 && ++gap > 3) break; continue }
+                // The near road is wide. A thin first run is a sliver beside the bonnet, a close car or
+                // the screen edge; anchoring on it would keep the whole corridor thin.
+                val minRun = if (lastGood < 0) maxOf(2, (w * MIN_FIRST_WIDTH).toInt()) else maxOf(2, w / 100)
+                if (b - a + 1 < minRun) {
+                    if (lastGood < 0) { if (i > N / 4) return null else continue }
+                    if (++gap > 3) break else continue
+                }
+                // Start only where the road continues: a lone wide row at the very bottom is
+                // usually an edge artefact (dashboard reflection, screen bezel when bench testing).
+                if (lastGood < 0 && i + 1 < N) {
+                    val ny = (rows[i + 1] * h).toInt().coerceIn(0, h - 1)
+                    val c = (a + b) / 2
+                    if (m[ny * w + c].toInt() != 1) { if (i > N / 4) return null else continue }
+                }
+                goodRows++
                 // The road can't get much wider going away from the camera; a jump means it leaked into
-                // a side road or open ground. Clamp to the previous width around the same centre.
-                if (prevWidth > 0 && b - a + 1 > prevWidth * 1.15f + 1) {
-                    val c = (a + b) / 2f; val half = prevWidth / 2f
+                // a side road or open ground. Clamp to the widest nearer row around the same centre
+                // (not just the previous row, so a short notch from a segmentation hole can recover).
+                // The nearest few rows may be partly hidden (bonnet, close vehicle), so they can widen.
+                if (goodRows > FREE_ROWS && maxWidth > 0 && b - a + 1 > maxWidth * 1.15f + 1) {
+                    val c = (a + b) / 2f; val half = maxWidth / 2f
                     a = (c - half).toInt().coerceAtLeast(0); b = (c + half).toInt().coerceAtMost(w - 1)
                 }
                 var l = a.toFloat() / w; var r = (b + 1).toFloat() / w
@@ -80,19 +112,64 @@ class Corridor(val rows: FloatArray, val left: FloatArray, val right: FloatArray
                     if (r - l < 0.01f) { if (++gap > 3) break; continue }
                 }
                 left[i] = l; right[i] = r
-                prevWidth = maxOf(1, ((r - l) * w).toInt())
+                maxWidth = maxOf(maxWidth, ((r - l) * w).toInt(), 1)
                 ref = (((l + r) / 2f) * w).toInt().coerceIn(0, w - 1)
                 lastGood = i; gap = 0
             }
             if (lastGood < 0) return null
+            // The road starts well above the frame bottom (bonnet, or a screen edge on the bench):
+            // resample from where it starts rather than stretching the first row down over it.
+            var first = 0; while (left[first].isNaN()) first++
+            if (first > 2 && depth == 0 && rows[first] > topY + 0.1f)
+                return scan(m, w, h, topY, egoX, rows[first], 1)
             bridge(left, right, lastGood)
-            return Corridor(rows, smooth(smooth(left)), smooth(smooth(right))).takeIf { it.length >= 3 }
+            // A median over 5 rows removes short notches (holes at zebra crossings, shadows) and
+            // spikes before the averaging pass, which would otherwise just blur them.
+            return Corridor(rows, smooth(smooth(median5(left))), smooth(smooth(median5(right)))).takeIf { it.length >= 3 }
         }
 
-        /** Morphological closing of small holes: horizontal gaps up to ~w/16, vertical up to 2 rows. */
+        /**
+         * Index of the nearest sample row (in the near half) whose road run around [egoX] is at least
+         * [FULL_WIDTH_SHARE] of the widest such run; 0 when the bottom row already qualifies.
+         */
+        private fun fullWidthStart(m: ByteArray, w: Int, h: Int, rows: FloatArray, egoX: Float): Int {
+            val widths = IntArray(N / 2)
+            val ref = (egoX * w).toInt().coerceIn(0, w - 1)
+            val reach = maxOf(2, (w * 0.25f).toInt())
+            for (i in widths.indices) {
+                val base = (rows[i] * h).toInt().coerceIn(0, h - 1) * w
+                var seed = -1
+                for (d in 0..reach) {
+                    if (ref - d >= 0 && m[base + ref - d].toInt() == 1) { seed = ref - d; break }
+                    if (ref + d < w && m[base + ref + d].toInt() == 1) { seed = ref + d; break }
+                }
+                if (seed < 0) continue
+                var a = seed; while (a > 0 && m[base + a - 1].toInt() == 1) a--
+                var b = seed; while (b < w - 1 && m[base + b + 1].toInt() == 1) b++
+                widths[i] = b - a + 1
+            }
+            val max = widths.maxOrNull() ?: 0
+            if (max <= 0) return 0
+            for (i in widths.indices) if (widths[i] >= max * FULL_WIDTH_SHARE) return i
+            return 0
+        }
+
+        /** 5-row running median over the valid prefix. */
+        internal fun median5(v: FloatArray): FloatArray {
+            val out = v.copyOf()
+            var n = 0; while (n < v.size && !v[n].isNaN()) n++
+            val win = FloatArray(5)
+            for (i in 2 until n - 2) {
+                for (k in 0 until 5) win[k] = v[i - 2 + k]
+                win.sort(); out[i] = win[2]
+            }
+            return out
+        }
+
+        /** Morphological closing of small holes: horizontal gaps up to ~w/10, vertical up to 2 rows. */
         internal fun closeGaps(mask: ByteArray, w: Int, h: Int): ByteArray {
             val m = mask.copyOf(w * h)
-            val maxH = maxOf(2, w / 16)
+            val maxH = maxOf(2, w / 10)
             for (y in 0 until h) {
                 val base = y * w
                 var x = 0
@@ -194,6 +271,7 @@ class CorridorSmoother(private val tauMs: Float = 170f, private val holdMs: Long
         val dtMs = if (lastNs == 0L) 16f else ((nowNs - lastNs) / 1e6f).coerceIn(0f, 200f)
         lastNs = nowNs
         val k = 1f - exp(-dtMs / tauMs)
+        val kIn = 1f - exp(-dtMs / (tauMs * 2f))
         if (c != null) {
             lastSeenNs = nowNs
             val fresh = left[0].isNaN() || alpha < 0.05f
@@ -202,7 +280,12 @@ class CorridorSmoother(private val tauMs: Float = 170f, private val holdMs: Long
                 val l = c.left[i]; val r = c.right[i]
                 if (l.isNaN() || r.isNaN()) { left[i] = Float.NaN; right[i] = Float.NaN; continue }
                 if (fresh || left[i].isNaN()) { left[i] = l; right[i] = r }
-                else { left[i] += (l - left[i]) * k; right[i] += (r - right[i]) * k }
+                else {
+                    // Segmentation dropouts shrink the corridor for a frame or two; let edges move
+                    // inward more slowly than outward so the shape doesn't flicker with them.
+                    left[i] += (l - left[i]) * (if (l > left[i]) kIn else k)
+                    right[i] += (r - right[i]) * (if (r < right[i]) kIn else k)
+                }
             }
             alpha += (1f - alpha) * (1f - exp(-dtMs / 180f))
         } else if (nowNs - lastSeenNs > holdMs * 1_000_000L) {

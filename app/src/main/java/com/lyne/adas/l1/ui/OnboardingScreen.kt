@@ -35,13 +35,16 @@ private val STEPS = listOf(
     // Safety disclaimer: must be explicitly accepted (see SafetyDisclaimer) before onboarding can continue.
     Step(SafetyDisclaimer.TITLE, "Lyne is an extra pair of eyes, not a substitute for attention. Distances and time-to-collision are estimates."),
     Step("Mount it well", "Landscape on the windshield, rear camera facing the road, lens clean and unobstructed. Lyne reads the mount's tilt from the gravity sensor and compensates automatically."),
-    Step("Permissions", "Camera is required to see the road. Location is optional but strongly recommended: speed lets Lyne suppress alerts in slow traffic and time warnings correctly."),
+    Step("Permissions", "Lyne needs the camera to see the road, and your location for speed. Without speed it can't tell oncoming or passing traffic from a real hazard, can't time warnings, and lane warnings stay off. Nothing leaves your phone."),
     Step("Pick your vehicle", "In Calibrate, choose your vehicle type so Lyne knows the camera height. It then keeps refining that from everyday traffic, so accuracy improves as you drive."),
 )
 
 @Composable
 fun OnboardingScreen(
     cameraGranted: Boolean,
+    locationGranted: Boolean,
+    locationOn: Boolean,
+    onTurnOnLocation: () -> Unit,
     disclaimerAccepted: Boolean,
     onAcceptDisclaimer: () -> Unit,
     onRequestPermissions: () -> Unit,
@@ -75,8 +78,19 @@ fun OnboardingScreen(
             }
             if (isPermStep) {
                 Spacer(Modifier.size(16.dp))
-                if (cameraGranted) Text("Camera granted ✓", color = p.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                else PillButton("GRANT PERMISSIONS", p.accent, onRequestPermissions)
+                PermissionRow("Camera", "Required: sees the road", cameraGranted)
+                PermissionRow("Location", "Recommended: your speed, from GPS", locationGranted)
+                if (locationGranted) PermissionRow("Location switched on", "Phone's Location setting (quick settings)", locationOn)
+                Spacer(Modifier.size(14.dp))
+                when {
+                    !cameraGranted || !locationGranted -> PillButton("GRANT PERMISSIONS", p.accent, onRequestPermissions)
+                    !locationOn -> PillButton("TURN ON LOCATION", p.accent, onTurnOnLocation)
+                    else -> Text("All set ✓", color = p.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                if (cameraGranted && !locationGranted) {
+                    Spacer(Modifier.size(8.dp))
+                    Text("You can continue without location, but warnings will be limited.", color = p.textDim, fontSize = 12.sp)
+                }
             }
         }
 
@@ -89,5 +103,18 @@ fun OnboardingScreen(
                 if (step == STEPS.lastIndex) onFinish() else step++
             }
         }
+    }
+}
+
+@Composable
+private fun PermissionRow(name: String, why: String, ok: Boolean) {
+    val p = palette()
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(10.dp).background(if (ok) p.ok else p.caution, CircleShape))
+        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+            Text(name, color = p.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(why, color = p.textDim, fontSize = 12.sp)
+        }
+        Text(if (ok) "ON" else "OFF", color = if (ok) p.ok else p.caution, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }

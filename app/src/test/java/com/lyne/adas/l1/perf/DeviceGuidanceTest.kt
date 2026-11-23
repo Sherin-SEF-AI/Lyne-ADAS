@@ -32,4 +32,11 @@ class DeviceGuidanceTest {
         assertEquals(3, DeviceGuidance.thermalStatusFromLabel("severe"))
         assertEquals(4, DeviceGuidance.thermalStatusFromLabel("critical"))
     }
+
+    @Test fun locationOffIsShown() {
+        assertEquals(listOf(DeviceHint.LOCATION_OFF), DeviceGuidance.hints(80, true, 0, GpsState.OFF))
+        assertEquals(listOf(DeviceHint.LOCATION_OFF), DeviceGuidance.hints(80, true, 0, GpsState.NO_PERMISSION))
+        assertEquals(listOf(DeviceHint.NO_GPS), DeviceGuidance.hints(80, true, 0, GpsState.NO_FIX))
+        assertEquals(emptyList<DeviceHint>(), DeviceGuidance.hints(80, true, 0, GpsState.OK))
+    }
 }
