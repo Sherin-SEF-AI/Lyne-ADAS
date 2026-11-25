@@ -218,7 +218,7 @@ class FusionEngine(
                     t.kalman.updates >= 4 -> t.closingMps
                     else -> Float.NaN
                 }
-                val s = PathIntrusion.vruSeverity(d, speedMps, closing, inEgo, inWide)
+                val s = PathIntrusion.vruSeverity(d, speedMps, closing, inEgo, inWide, rider = t.cls != ObjectClass.PEDESTRIAN)
                 if (s.ordinal > vruRaw.ordinal) { vruRaw = s; vruBox = t.box; vruDist = d }
             }
         }

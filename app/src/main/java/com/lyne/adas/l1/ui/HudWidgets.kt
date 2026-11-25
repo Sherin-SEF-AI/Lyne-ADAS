@@ -116,7 +116,7 @@ fun LeadCard(f: FusionResult?) {
                 color = if (closing > 0) p.caution else p.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold,
             )
         }
-        if (f.leadBraking) {
+        if (f.showBraking()) {
             Spacer(Modifier.width(10.dp))
             Text(
                 "BRAKING", color = p.background, fontSize = 12.sp, fontWeight = FontWeight.Black,

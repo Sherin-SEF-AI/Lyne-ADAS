@@ -34,7 +34,11 @@ object PathIntrusion {
      *
      * @param closingMps track closing speed (+ = approaching) or NaN while unknown
      */
-    fun vruSeverity(distanceM: Float, egoSpeedMps: Float, closingMps: Float, inEgo: Boolean, inWide: Boolean): Severity {
+    fun vruSeverity(
+        distanceM: Float, egoSpeedMps: Float, closingMps: Float, inEgo: Boolean, inWide: Boolean,
+        /** Two-wheeler / cyclist (moves with traffic) rather than a pedestrian. */
+        rider: Boolean = false,
+    ): Severity {
         if (!inWide || distanceM.isNaN()) return Severity.NONE
         val v = if (egoSpeedMps.isNaN()) 6f else egoSpeedMps
         if (v < 1.5f) return if (distanceM < 12f) Severity.INFO else Severity.NONE
@@ -53,6 +57,15 @@ object PathIntrusion {
         // speed is within ~2.5 m/s of our own; the measured value lags on small, far boxes at low fps.
         val effClosing = maxOf(closingMps, v - 2.5f)
         val ttr = distanceM / effClosing
+        // Crawling traffic (< ~15 km/h): riders weave a few metres around us all the time and
+        // stopping takes about a metre, so only real collision timing counts, riders never go
+        // critical, and cautions are for someone actually in our path.
+        if (!egoSpeedMps.isNaN() && v < SLOW_TRAFFIC_MPS) return when {
+            inEgo && ttr < SLOW_CRITICAL_TTR_S && closingMps >= 1.0f -> if (rider) Severity.CAUTION else Severity.CRITICAL
+            inEgo && ttr < SLOW_CAUTION_TTR_S -> Severity.CAUTION
+            distanceM < 25f -> Severity.INFO
+            else -> Severity.NONE
+        }
         return when {
             // Without GPS speed we can't tell a rider pacing us from one we're about to hit (two-
             // wheelers alongside are constant in Indian traffic): never critical, like animals.
@@ -62,6 +75,11 @@ object PathIntrusion {
             else -> Severity.NONE
         }
     }
+
+    /** Below this ego speed (~15 km/h) VRU warnings use the crawling-traffic rules. */
+    const val SLOW_TRAFFIC_MPS = 4.2f
+    const val SLOW_CRITICAL_TTR_S = 1.2f
+    const val SLOW_CAUTION_TTR_S = 2.0f
 
     /** Animal warnings are off below this ego speed (~10 km/h, like FCW). */
     const val ANIMAL_MIN_SPEED_MPS = 2.8f

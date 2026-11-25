@@ -178,11 +178,12 @@ private const val TOP_UI_BAND_DP = 84f
 
 private fun DrawScope.drawObject(a: BoxAnimator.Anim, result: FusionResult, map: Mapper, p: LynePalette, measurer: TextMeasurer) {
     val o = a.obj
+    val braking = result.showBraking()
     if (o.cls == ObjectClass.UNKNOWN) return
     val alert = when {
         o.isLead && result.fcw == Severity.CRITICAL -> p.critical
         o.isLead && result.fcw == Severity.CAUTION -> p.caution
-        o.isLead && result.leadBraking -> p.critical
+        o.isLead && braking -> p.critical
         o.cls.isVru && o.inPath && result.vru == Severity.CRITICAL -> p.critical
         o.cls.isVru && o.inPath -> p.caution
         o.cls == ObjectClass.ANIMAL && result.animal == Severity.CRITICAL -> p.critical
@@ -217,11 +218,11 @@ private fun DrawScope.drawObject(a: BoxAnimator.Anim, result: FusionResult, map:
             val above = t - 6f * density > TOP_UI_BAND_DP * density
             val tagY = if (above) t - 6f * density else fy + 36f * density
             drawTag(measurer, main, sub, (l + r) / 2f, tagY, c, p, fade, big = true, centered = true)
-            if (result.leadBraking) {
+            if (braking) {
                 val by = if (above) fy + 26f * density else tagY + 26f * density
                 drawTag(measurer, "BRAKING", null, (l + r) / 2f, by, p.critical, p, fade, big = false, centered = true, solid = true)
             }
-        } else if (result.leadBraking) {
+        } else if (braking) {
             drawTag(measurer, "BRAKING", null, (l + r) / 2f, fy + 26f * density, p.critical, p, fade, big = false, centered = true, solid = true)
         }
         return
@@ -353,3 +354,17 @@ private fun fillCenterMapper(viewW: Float, viewH: Float, imageAspect: Float): Ma
         Mapper(viewW, viewH, 0f, (1f - imageAspect / viewAspect) / 2f)
     }
 }
+
+/**
+ * Brake lights ahead are worth flagging when we're moving at speed or already closing in. In
+ * stop-and-go traffic every car ahead has its brake lights on, and a permanently red lead box is
+ * just noise.
+ */
+internal fun FusionResult.showBraking(): Boolean {
+    if (!leadBraking) return false
+    if (fcw != Severity.NONE) return true
+    val v = speedKph ?: return true
+    return v.isNaN() || v >= BRAKING_HIGHLIGHT_MIN_KPH
+}
+
+private const val BRAKING_HIGHLIGHT_MIN_KPH = 15f
