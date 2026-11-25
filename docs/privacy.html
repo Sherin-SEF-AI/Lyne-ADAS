@@ -39,7 +39,7 @@ footer{border-top:1px solid var(--line);margin-top:48px;padding:28px 0;color:var
 <header><div class="wrap"><a href="./">Lyne ADAS</a></div></header>
 <main class="wrap">
 <h1>Privacy Policy</h1>
-<p class="meta">Lyne ADAS for Android · Effective 23 November 2026</p>
+<p class="meta">Lyne ADAS for Android · Effective 25 November 2026</p>
 
 <div class="key">
 <strong>In short:</strong> Lyne runs entirely on your phone. It has no account, no ads, no analytics and no
@@ -50,9 +50,10 @@ internet permission, so it cannot send anything anywhere. Nothing is collected b
 <table>
 <tr><th>Data</th><th>Why</th><th>Where it goes</th></tr>
 <tr><td><strong>Camera</strong></td><td>To see the road and detect vehicles, pedestrians, riders, animals, lanes and signs.</td><td>Frames are processed in memory on your phone and discarded. They are stored only if you turn on the event dashcam (below).</td></tr>
-<tr><td><strong>Precise location</strong></td><td>To read your speed from GPS, so warnings are timed correctly and oncoming or passing traffic is not mistaken for a hazard.</td><td>Used on your phone. A drive's route is saved in your trip history on the phone.</td></tr>
+<tr><td><strong>Location</strong> (precise and approximate)</td><td>To read your speed from GPS, so warnings are timed correctly and oncoming or passing traffic is not mistaken for a hazard.</td><td>Used on your phone. A drive's route is saved in your trip history on the phone.</td></tr>
 <tr><td><strong>Motion sensors</strong></td><td>To measure the phone's tilt on its mount and your turning, which improves distance estimates.</td><td>Used on your phone only; not stored.</td></tr>
 <tr><td><strong>Bluetooth (optional)</strong></td><td>Only if you turn on "Remind me when my car connects", to notice your car's Bluetooth connecting.</td><td>Used on your phone only; the chosen device's address is saved in the app's settings.</td></tr>
+<tr><td><strong>Vibration</strong></td><td>To give a haptic cue with critical warnings.</td><td>No data involved.</td></tr>
 <tr><td><strong>Notifications (optional)</strong></td><td>Only for the car-connect reminder.</td><td>Shown on your phone.</td></tr>
 </table>
 <p>Lyne does not use the microphone, contacts, photos or any account, and does not request internet access.</p>
@@ -73,8 +74,25 @@ using Android's share menu, and then only to the app or person you pick.</p>
 Android's location service (Google Play services) provides the GPS fix to the app on your device; its handling is covered
 by Google's own privacy policy.</p>
 
+<h2>Your choices and control</h2>
+<ul>
+<li><strong>Permissions:</strong> you can allow or deny camera, location, Bluetooth and notifications, and change them any time in Android settings. Without the camera Lyne cannot work; without location it works with fewer warnings.</li>
+<li><strong>Automatic clean-up:</strong> Lyne keeps only your 50 most recent trips and 40 most recent dashcam clips; older ones are deleted automatically. You can turn the dashcam off in Settings at any time.</li>
+<li><strong>Delete everything:</strong> uninstall Lyne, or clear its storage in Android settings.</li>
+<li><strong>Access and correction:</strong> because we hold no data about you, there is nothing for us to give you, correct or erase. Everything Lyne stores is on your phone and under your control.</li>
+</ul>
+
+<h2>Security</h2>
+<p>Trip history, settings and diagnostics are kept in the app's private storage, which other apps cannot read.
+Dashcam clips are kept in the app's own folder. Because nothing is sent over the internet, there is no server or
+transfer that could be breached.</p>
+
 <h2>Children</h2>
 <p>Lyne is a driving aid intended for licensed adult drivers and is not directed at children.</p>
+
+<h2>Terms of use</h2>
+<p>Your use of Lyne is also covered by the <a href="terms.html">Terms of Use</a>, including the safety notice that
+Lyne is a warning-only aid and you remain responsible for driving.</p>
 
 <h2>Changes</h2>
 <p>If this policy changes, the new version will be posted on this page with a new effective date.</p>
@@ -83,6 +101,6 @@ by Google's own privacy policy.</p>
 <p>Questions about privacy: open an issue at
 <a href="https://github.com/Sherin-SEF-AI/Lyne-ADAS/issues">github.com/Sherin-SEF-AI/Lyne-ADAS/issues</a>.</p>
 </main>
-<footer><div class="wrap">Lyne ADAS · Open source · <a href="./">Home</a></div></footer>
+<footer><div class="wrap">Lyne ADAS · Open source · <a href="./">Home</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></div></footer>
 </body>
 </html>
