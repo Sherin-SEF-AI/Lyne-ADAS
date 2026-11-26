@@ -66,6 +66,19 @@ object PathIntrusion {
             distanceM < 25f -> Severity.INFO
             else -> Severity.NONE
         }
+        // Two-wheelers ride with traffic, often at our speed: the walking-pace floor above would turn
+        // a bike we are following at 30 km/h into an imminent hit. Use the measured closing speed
+        // only; following a rider too closely is the headway warning's job.
+        if (rider) {
+            val ttrR = distanceM / closingMps
+            return when {
+                inEgo && ttrR < RIDER_CRITICAL_TTR_S && closingMps >= RIDER_MIN_CLOSING_MPS ->
+                    if (egoSpeedMps.isNaN()) Severity.CAUTION else Severity.CRITICAL
+                (inEgo && (ttrR < 3.0f || distanceM < 4f)) || ttrR < 1.8f -> Severity.CAUTION
+                distanceM < 25f -> Severity.INFO
+                else -> Severity.NONE
+            }
+        }
         return when {
             // Without GPS speed we can't tell a rider pacing us from one we're about to hit (two-
             // wheelers alongside are constant in Indian traffic): never critical, like animals.
@@ -80,6 +93,9 @@ object PathIntrusion {
     const val SLOW_TRAFFIC_MPS = 4.2f
     const val SLOW_CRITICAL_TTR_S = 1.2f
     const val SLOW_CAUTION_TTR_S = 2.0f
+    /** Rider in our path: critical only when we are really closing on them (rider braking, or stopped). */
+    const val RIDER_CRITICAL_TTR_S = 1.5f
+    const val RIDER_MIN_CLOSING_MPS = 2.5f
 
     /** Animal warnings are off below this ego speed (~10 km/h, like FCW). */
     const val ANIMAL_MIN_SPEED_MPS = 2.8f

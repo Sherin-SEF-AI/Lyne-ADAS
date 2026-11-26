@@ -340,4 +340,34 @@ class AccuracyTest {
         println("pedestrian ahead at 10 km/h: VRU critical at real time-to-reach=$critAt s")
         assertTrue("critical at $critAt s", critAt > 0.5f)
     }
+
+    /**
+     * 26 Nov drive: following a motorbike 6-8 m ahead at ~28 km/h, gap wobbling as it weaves, at the
+     * phone's ~5 fps. That is a headway situation, not an imminent hit: no "PEDESTRIAN / RIDER".
+     */
+    @Test fun riderAheadMovingWithTrafficIsNotCritical() {
+        for (seed in 81L..85L) {
+            val proj = Projector(seed = seed)
+            val rider = SimObject(z = 7f, x = 0.2f, width = 0.8f, height = 1.6f, cls = ObjectClass.MOTORCYCLE)
+            val engine = FusionEngine(AdasConfig.DEFAULT, VRU_ONLY, autoCalEnabled = false)
+            val events = runSim(proj, listOf(rider), 12f, 5f, engine, step = { _, t ->
+                rider.z = 7f + 1.5f * kotlin.math.sin(t * 1.3f)
+                rider.x = 0.2f + 0.4f * kotlin.math.sin(t * 0.7f); 7.8f
+            })
+            assertEquals("seed $seed", 0, events.count { it.type == AlertType.VRU && it.severity == Severity.CRITICAL })
+        }
+    }
+
+    /** Same speed, but the bike ahead brakes to a stop: that must still go critical in time. */
+    @Test fun riderStoppingAheadIsStillCritical() {
+        val proj = Projector(seed = 87)
+        val rider = SimObject(z = 22f, x = 0.1f, width = 0.8f, height = 1.6f, cls = ObjectClass.MOTORCYCLE)
+        val engine = FusionEngine(AdasConfig.DEFAULT, VRU_ONLY, autoCalEnabled = false)
+        var critAt = Float.NaN
+        runSim(proj, listOf(rider), 3.5f, 5f, engine, step = { dt, _ -> rider.z -= 7.8f * dt; 7.8f }) { _, r ->
+            if (critAt.isNaN() && r.vru == Severity.CRITICAL) critAt = rider.z / 7.8f
+        }
+        println("stopped rider ahead at 28 km/h: VRU critical at real time-to-reach=$critAt s")
+        assertTrue("critical at $critAt s", critAt > 0.8f)
+    }
 }
